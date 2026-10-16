@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, user-scalable=no, viewport-fit=cover">
+    <title>Космическое Яйцо — Idle Clicker</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <style>
+        * {
+            margin: 0; padding: 0; box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        html, body {
+            overflow: hidden; background: #05050a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            width: 100%; height: 100%;
+        }
+        canvas { display: block; touch-action: none; }
+        #loadingScreen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #05050a; color: #fff;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 24px; z-index: 100; flex-direction: column;
+        }
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top: 4px solid #9d4edd;
+            border-radius: 50%; width: 40px; height: 40px;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+    <script src="vk-bridge.js"></script>
+</head>
+<body>
+    <div id="loadingScreen">
+        <div class="spinner"></div>
+        <div id="loadingText">Загрузка Космоса...</div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    
+    <script>
+    // ====================================================================================
+    // COSMIC EGG: IDLE CLICKER - VK EDITION (v2.0 - VK Bridge)
+    // ====================================================================================
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const loadingScreen = document.getElementById('loadingScreen');
+
+    let W, H, DPR;
+    
+    function resize() {
+        DPR = window.devicePixelRatio || 1;
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = W * DPR;
+        canvas.height = H * DPR;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        
+        game.isMobile = W <= 820 || (W < H);
+        if (!game.isMobile) game.uiPanelOpen = true;
+    }
+    window.addEventListener('resize', resize);
+
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
+    document.addEventListener('selectstart', (e) => e.preventDefault());
+    document.addEventListener('dragstart', (e) => e.preventDefault());
+
+    // ====================================================================================
+    // 1. VK BRIDGE & LOCALIZATION
+    // ====================================================================================
+    // НАСТРОЙКА МОНЕТИЗАЦИИ:
+    // По умолчанию рекламные кнопки (x2 доход, офлайн-доход, рулетка) скрыты.
+    // После подключения монетизации в панели разработчика VK
+    // (dev.vk.com → ваше приложение → Монетизация) установите true —
+    // кнопки появятся и начнут показывать рекламу VK (rewarded/interstitial).
+    const ADS_ENABLED = false;
+
+    let vk = null;       // vkBridge, если игра запущена внутри VK
+    let inVK = false;    // флаг «запущено внутри ВКонтакте»
+    let adsUI = false;   // показывать ли рекламные кнопки
+    let lang = 'ru';
+    const SAVE_KEY = 'cosmicEggSaveV12';
+
+    const i18n = {
+        ru: {
+            loading: "Загрузка Космоса...",
+            stardust: "Звездная пыль", perSecond: "в сек", perClick: "за клик",
+            shop: "Магазин", quests: "Задания", stats: "Статы",
+            boost2x: "📺 Реклама: x2 Доход",
+            instantOffline: "📺 Реклама: 2ч Офлайн",
+            totalClicks: "Всего кликов", totalDust: "Всего пыли", meteorsCaught: "Поймано метеоритов", playTime: "Время в игре",
+            offlineEarnings: "Оффлайн доход", level: "Ур.", cost: "Цена",
+            soundOn: "Звук", soundOff: "Мьют",
+            questClicks: "Сделайте кликов", questBuy: "Купите улучшений", questMeteors: "Поймайте метеоритов",
+            questsCompleted: "Выполнено циклов: ", questRewardInfo: "Награда за цикл: 1 час дохода",
+            claim: "Забрать награду", inProgress: "Выполняйте задания для награды",
+            roulette: "Рулетка", freeSpin: "Бесплатно",
+            spinAd: "📺 Смотреть рекламу",
+            spinAgain: "📺 Ещё раз (Реклама)",
+            won: "Вы выиграли:", close: "Закрыть", meteorAlert: "МЕТЕОРИТ!",
+            rewardOffline: "+2ч дохода!", rewardQuests: "Награда: +",
+            langBtn: "EN"
+        },
+        en: {
+            loading: "Loading Space...",
+            stardust: "Stardust", perSecond: "per sec", perClick: "per click",
+            shop: "Shop", quests: "Quests", stats: "Stats",
+            boost2x: "📺 Ad: x2 Income",
+            instantOffline: "📺 Ad: 2h Offline",
+            totalClicks: "Total clicks", totalDust: "Total dust", meteorsCaught: "Meteors caught", playTime: "Play time",
+            offlineEarnings: "Offline earnings", level: "Lvl.", cost: "Cost",
+            soundOn: "Sound", soundOff: "Mute",
+            questClicks: "Make clicks", questBuy: "Buy upgrades", questMeteors: "Catch meteors",
+            questsCompleted: "Cycles completed: ", questRewardInfo: "Cycle reward: 1 hour income",
+            claim: "Claim Reward", inProgress: "Complete quests for reward",
+            roulette: "Roulette", freeSpin: "Free",
+            spinAd: "📺 Watch Ad",
+            spinAgain: "📺 Spin Again (Ad)",
+            won: "You won:", close: "Close", meteorAlert: "METEOR!",
+            rewardOffline: "+2h income!", rewardQuests: "Reward: +",
+            langBtn: "RU"
+        }
+    };
+    let t = i18n.ru;
+    document.getElementById('loadingText').innerText = t.loading;
+
+    const questPool = [
+        { text: t => t.questClicks, type: 'click', baseTarget: 500 },
+        { text: t => t.questBuy, type: 'buy', baseTarget: 20 },
+        { text: t => t.questMeteors, type: 'meteor', baseTarget: 3 }
+    ];
+
+    function updateQuestTexts() {
+        if (game.quests.data.length > 0) {
+            game.quests.data.forEach(q => {
+                let poolItem = questPool.find(p => p.type === q.type);
+                if (poolItem) q.text = poolItem.text(t);
+            });
+        }
+    }
+
+    function setLanguage(newLang) {
+        lang = newLang;
+        t = i18n[lang];
+        document.getElementById('loadingText').innerText = t.loading;
+        updateQuestTexts();
+        initUpgrades();
+    }
+
+    // Определяем, запущена ли игра внутри ВКонтакте
+    function detectIsVK() {
+        try {
+            if (window.AndroidBridge) return true;                          // нативный Android WebView
+            if (window.webkit && window.webkit.messageHandlers &&
+                window.webkit.messageHandlers.VKWebAppClose) return true;   // нативный iOS WebView
+            // Веб-платформа: VK добавляет в URL параметры запуска vk_*
+            return /[?&](vk_app_id|vk_user_id|vk_platform|vk_language|sign)=/.test(location.search);
+        } catch (e) { return false; }
+    }
+
+    // Автоопределение языка RU/EN: сначала параметры VK, затем язык браузера
+    function detectLanguage() {
+        try {
+            let m = /[?&]vk_language=(ru|uk|ua|be|kz|en|pt|es)/.exec(location.search);
+            if (m) return (['ru','uk','ua','be','kz'].indexOf(m[1]) >= 0) ? 'ru' : 'en';
+        } catch (e) {}
+        try {
+            return (navigator.language || 'ru').toLowerCase().startsWith('ru') ? 'ru' : 'en';
+        } catch (e) { return 'ru'; }
+    }
+
+    // FIX #1: Гарантированный запуск игры даже при ошибках
+    async function initPlatform() {
+        // Этап 1: Инициализация VK Bridge (только внутри ВКонтакте)
+        try {
+            setLanguage(detectLanguage());
+            if (window.vkBridge && detectIsVK()) {
+                await window.vkBridge.send('VKWebAppInit');
+                vk = window.vkBridge;
+                inVK = true;
+                console.log("VK Bridge initialized.");
+            } else {
+                console.log("VK Bridge недоступен. Standalone mode (веб / GitHub Pages).");
+            }
+        } catch (e) {
+            console.error("VK Bridge init error:", e);
+        }
+        adsUI = ADS_ENABLED && inVK;
+
+        // Этап 2: Загрузка сейва с защитой от падений
+        try {
+            await loadGame();
+        } catch(e) {
+            console.error("loadGame error, starting fresh:", e);
+            // Fallback: начинаем с чистого листа
+            initUpgrades();
+            generateNewQuests();
+        }
+        
+        // Этап 3: Гарантированный запуск игры (вне зависимости от ошибок выше)
+        updateQuestTexts();
+        game.state = 'playing';
+        game.lastTick = Date.now();
+        loadingScreen.style.display = 'none';
+
+        // Интервал сохранения — запускаем ОДИН раз здесь, а не в loadGame()
+        // + оборачиваем в catch чтобы ошибки сохранения не падали
+        setInterval(() => { 
+            saveGame().catch(e => console.error("Auto-save error:", e)); 
+        }, 15000);
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            game.state = 'paused';
+            // Сохраняем прогресс при сворачивании игры
+            saveGame().catch(e => console.error("Save on hide error:", e));
+        } else {
+            if (game.state === 'paused') {
+                game.state = 'playing';
+                game.lastTick = Date.now();
+            }
+        }
+    });
+
+    // ====================================================================================
+    // 2. AUDIO MANAGER
+    // ====================================================================================
+    let audioCtx = null, soundEnabled = true;
+    function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    function playSound(freq, duration, type = 'sine', vol = 0.1) {
+        if (!soundEnabled || !audioCtx) return;
+        let osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.frequency.value = freq; osc.type = type;
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.start(); osc.stop(audioCtx.currentTime + duration);
+    }
+    const sfx = {
+        click: () => playSound(400 + Math.random()*100, 0.05, 'square', 0.05),
+        buy: () => { playSound(800, 0.1, 'triangle', 0.1); setTimeout(()=>playSound(1200, 0.1, 'triangle', 0.1), 50); },
+        meteor: () => playSound(1000, 0.2, 'sawtooth', 0.15),
+        roulette: () => playSound(600, 0.05, 'square', 0.08),
+        quest: () => { playSound(600, 0.2, 'sine', 0.2); setTimeout(()=>playSound(900, 0.2, 'sine', 0.2), 100); }
+    };
+
+    // ====================================================================================
+    // 3. GAME STATE & DATA
+    // ====================================================================================
+    let game = {
+        state: 'loading',
+        isMobile: false, uiPanelOpen: false, panelAnim: 0,
+        dust: 0, totalDust: 0,
+        tapPower: 1, dps: 0, multiplier: 1,
+        boostTime: 0, meteorBoostTime: 0,
+        totalClicks: 0, meteorsCaught: 0,
+        startTime: Date.now(), lastSave: Date.now(),
+        currentTab: 'shop', buyAmount: 1, shopScroll: 0, shopScrollTarget: 0,
+        eggPulse: 1, eggAngle: 0, cameraShake: 0, shockwaves: [],
+        upgrades: [],
+        particles: [], floatTexts: [], meteors: [], stars: [],
+        modal: null, rouletteAngle: 0, rouletteSpinning: false, rouletteResult: null, rouletteStopTime: null,
+        quests: { completedCount: 0, data: [] },
+        freeSpins: 1, lastSpinReset: 0,
+        uiElements: [], 
+        running: false,
+        shopTouchActive: false
+    };
+
+    function generateNewQuests() {
+        let scale = 1 + Math.floor(game.quests.completedCount / 3) * 0.5;
+        game.quests.data = [];
+        let pool = [...questPool].sort(() => Math.random() - 0.5);
+        for(let i=0; i<3; i++) {
+            let q = pool[i];
+            game.quests.data.push({
+                id: q.type + "_" + Math.random(),
+                text: q.text(t),
+                target: Math.ceil(q.baseTarget * scale),
+                current: 0,
+                type: q.type,
+                done: false
+            });
+        }
+    }
+
+    function initUpgrades() {
+        let baseUpgrades = [
+            { id: 'tap1', name: lang === 'ru' ? "Энергия I" : "Energy I", desc: lang === 'ru' ? "+1 к клику" : "+1 per click", baseCost: 15, costMult: 1.15, level: 0, type: 'tap', value: 1 },
+            { id: 'comet', name: lang === 'ru' ? "Комета" : "Comet", desc: lang === 'ru' ? "+1 в сек" : "+1 per sec", baseCost: 100, costMult: 1.15, level: 0, type: 'dps', value: 1 },
+            { id: 'tap2', name: lang === 'ru' ? "Энергия II" : "Energy II", desc: lang === 'ru' ? "+5 к клику" : "+5 per click", baseCost: 500, costMult: 1.15, level: 0, type: 'tap', value: 5 },
+            { id: 'nebula', name: lang === 'ru' ? "Туманность" : "Nebula", desc: lang === 'ru' ? "+10 в сек" : "+10 per sec", baseCost: 1100, costMult: 1.15, level: 0, type: 'dps', value: 10 },
+            { id: 'tap3', name: lang === 'ru' ? "Кулак" : "Fist", desc: lang === 'ru' ? "+50 к клику" : "+50 per click", baseCost: 5000, costMult: 1.15, level: 0, type: 'tap', value: 50 },
+            { id: 'blackhole', name: lang === 'ru' ? "Черная дыра" : "Black Hole", desc: lang === 'ru' ? "+100 в сек" : "+100 per sec", baseCost: 12000, costMult: 1.15, level: 0, type: 'dps', value: 100 },
+            { id: 'tap4', name: lang === 'ru' ? "Сверхнова" : "Supernova", desc: lang === 'ru' ? "+500 к клику" : "+500 per click", baseCost: 50000, costMult: 1.15, level: 0, type: 'tap', value: 500 },
+            { id: 'quasar', name: lang === 'ru' ? "Квазар" : "Quasar", desc: lang === 'ru' ? "+1K в сек" : "+1K per sec", baseCost: 100000, costMult: 1.15, level: 0, type: 'dps', value: 1000 },
+            { id: 'mult1', name: lang === 'ru' ? "Аура" : "Aura", desc: lang === 'ru' ? "x2 ко всему" : "x2 to all", baseCost: 200000, costMult: 10, level: 0, type: 'mult', value: 2 },
+            { id: 'galaxy', name: lang === 'ru' ? "Галактика" : "Galaxy", desc: lang === 'ru' ? "+10K в сек" : "+10K per sec", baseCost: 500000, costMult: 1.15, level: 0, type: 'dps', value: 10000 },
+            { id: 'pulsar', name: lang === 'ru' ? "Пульсар" : "Pulsar", desc: lang === 'ru' ? "+50K в сек" : "+50K per sec", baseCost: 5000000, costMult: 1.16, level: 0, type: 'dps', value: 50000 },
+            { id: 'tap5', name: lang === 'ru' ? "Космо-кулак" : "Cosmo-Fist", desc: lang === 'ru' ? "+5K к клику" : "+5K per click", baseCost: 10000000, costMult: 1.16, level: 0, type: 'tap', value: 5000 },
+            { id: 'mult2', name: lang === 'ru' ? "Резонанс" : "Resonance", desc: lang === 'ru' ? "x3 ко всему" : "x3 to all", baseCost: 50000000, costMult: 15, level: 0, type: 'mult', value: 3 },
+            { id: 'cluster', name: lang === 'ru' ? "Скопление" : "Cluster", desc: lang === 'ru' ? "+500K в сек" : "+500K per sec", baseCost: 100000000, costMult: 1.17, level: 0, type: 'dps', value: 500000 },
+            { id: 'singularity', name: lang === 'ru' ? "Сингулярность" : "Singularity", desc: lang === 'ru' ? "x5 ко всему" : "x5 to all", baseCost: 1000000000, costMult: 20, level: 0, type: 'mult', value: 5 },
+            { id: 'multiverse', name: lang === 'ru' ? "Мультивселенная" : "Multiverse", desc: lang === 'ru' ? "+10M в сек" : "+10M per sec", baseCost: 10000000000, costMult: 1.18, level: 0, type: 'dps', value: 10000000 }
+        ];
+
+        if (game.upgrades.length === 0) {
+            game.upgrades = baseUpgrades;
+        } else {
+            game.upgrades.forEach((u, i) => {
+                if (baseUpgrades[i]) {
+                    u.name = baseUpgrades[i].name;
+                    u.desc = baseUpgrades[i].desc;
+                }
+            });
+        }
+    }
+
+    // ====================================================================================
+    // 4. MATHEMATICS & LOGIC
+    // ====================================================================================
+    function getUpgradeCost(upg, amount = 1) {
+        return Math.ceil(upg.baseCost * Math.pow(upg.costMult, upg.level) * (Math.pow(upg.costMult, amount) - 1) / (upg.costMult - 1));
+    }
+
+    function getMaxBuy(upg) {
+        if (upg.type === 'mult') return 1;
+        let base = upg.baseCost * Math.pow(upg.costMult, upg.level);
+        let affordable = Math.floor(Math.log(game.dust * (upg.costMult - 1) / base + 1) / Math.log(upg.costMult));
+        return Math.max(0, affordable);
+    }
+
+    function recalcStats() {
+        let tap = 1, dps = 0, mult = 1;
+        game.upgrades.forEach(u => {
+            if (u.type === 'tap') tap += u.value * u.level;
+            if (u.type === 'dps') dps += u.value * u.level;
+            if (u.type === 'mult') mult *= Math.pow(u.value, u.level);
+        });
+        game.tapPower = tap;
+        game.dps = dps;
+        game.multiplier = mult;
+    }
+
+    function buyUpgrade(index) {
+        let upg = game.upgrades[index];
+        let buyAmt = (upg.type === 'mult') ? 1 : (game.buyAmount === "Max" ? getMaxBuy(upg) : game.buyAmount);
+        if (!buyAmt || buyAmt <= 0) return;
+        
+        let cost = getUpgradeCost(upg, buyAmt);
+        if (game.dust >= cost) {
+            game.dust -= cost;
+            upg.level += buyAmt;
+            recalcStats();
+            sfx.buy();
+            let q = game.quests.data.find(x => x.type === 'buy');
+            if (q && !q.done) { 
+                q.current += buyAmt; 
+                if (q.current >= q.target) q.done = true; 
+            }
+            saveGame().catch(e => console.error("Save error:", e));
+        }
+    }
+
+    function clickEgg(x, y) {
+        let gain = game.tapPower * game.multiplier * (game.boostTime > 0 ? 2 : 1) * (game.meteorBoostTime > 0 ? 5 : 1);
+        game.dust += gain; game.totalDust += gain; game.totalClicks++;
+        game.eggPulse = 0.85;
+        
+        game.shockwaves.push({ x, y, radius: 0, maxRadius: 100, life: 1 });
+        
+        for(let i=0; i<8; i++) {
+            let angle = Math.random() * Math.PI * 2;
+            let speed = Math.random() * 8 + 2;
+            game.particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed - 2, life: 1, size: 2+Math.random()*4, color: `hsl(${260+Math.random()*60}, 100%, 70%)` });
+        }
+        game.floatTexts.push({ x: x + (Math.random()-0.5)*20, y: y - 20, text: "+"+formatNum(gain), life: 1, vy: -3, rot: (Math.random()-0.5)*0.2 });
+        sfx.click();
+        if (gain > 10000) game.cameraShake = 3;
+        
+        let q = game.quests.data.find(x => x.type === 'click');
+        if (q && !q.done) { q.current++; if (q.current >= q.target) q.done = true; }
+    }
+
+    function claimQuests() {
+        if (!game.quests.data.every(q => q.done)) return;
+        
+        game.quests.completedCount++;
+        let gain = Math.max(1000, game.dps * game.multiplier * 3600);
+        game.dust += gain;
+        game.totalDust += gain;
+        game.floatTexts.push({ x: W/2, y: H/2, text: t.rewardQuests + formatNum(gain), life: 3, vy: -2, color: "#00FF99" });
+        sfx.quest();
+        
+        generateNewQuests();
+        saveGame().catch(e => console.error("Save error:", e));
+        showInterstitial();
+    }
+
+    function spawnMeteor() {
+        let y = Math.random() * (H * 0.5) + 150;
+        game.meteors.push({ x: -50, y: y, vx: 8 + Math.random()*4, vy: 1.5, life: 15, size: 25 });
+    }
+
+    function clickMeteor(m) {
+        let gain = Math.max(100, game.dps * game.multiplier * 120);
+        if (gain <= 100) gain = game.tapPower * 50; 
+        
+        game.dust += gain;
+        game.totalDust += gain;
+        game.meteorsCaught++;
+        
+        game.floatTexts.push({ x: m.x, y: m.y, text: "+" + formatNum(gain), life: 2, vy: -2, color: "#FFD700" });
+        sfx.meteor();
+        game.meteors = game.meteors.filter(x => x !== m);
+        game.cameraShake = 10;
+        for(let i=0; i<20; i++) {
+            game.particles.push({ x: m.x, y: m.y, vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15, life: 1, size: 3+Math.random()*5, color: "#FFD700" });
+        }
+        
+        let q = game.quests.data.find(x => x.type === 'meteor');
+        if (q && !q.done) { q.current++; if (q.current >= q.target) q.done = true; }
+    }
+
+    function spinRoulette() {
+        if (game.rouletteSpinning) return;
+        let now = Date.now();
+        if (now - game.lastSpinReset > 86400000) {
+            game.lastSpinReset = now;
+            game.freeSpins = 1;
+        }
+        if (game.freeSpins > 0) { game.freeSpins--; startSpin(); } 
+        else if (adsUI) { showRewarded('roulette'); }
+        else { startSpin(); } // Реклама не подключена: крутим бесплатно
+    }
+
+    function startSpin() {
+        game.rouletteSpinning = true;
+        game.rouletteResult = null;
+        game.rouletteStopTime = Date.now() + 3000 + Math.random() * 2000;
+        sfx.roulette();
+    }
+
+    function finishSpin() {
+        let winningAngle = (270 - game.rouletteAngle + 36000) % 360;
+        let segment = Math.floor(winningAngle / 45);
+        let prizes = ["x2", lang === 'ru' ? "Пыль" : "Dust", "x2", lang === 'ru' ? "Пусто" : "Empty", lang === 'ru' ? "ДЖ" : "JACK", lang === 'ru' ? "Пусто" : "Empty", "x2", lang === 'ru' ? "Пыль" : "Dust"];
+        let res = prizes[segment];
+        game.rouletteResult = res;
+        game.rouletteSpinning = false;
+
+        if (res.includes("x2")) game.boostTime = 60;
+        else if (res.includes("ДЖ") || res.includes("JACK")) game.boostTime = 300;
+        else if (res.includes("Пыль") || res.includes("Dust")) {
+            let gain = Math.max(1000, game.dps * game.multiplier * 3600);
+            game.dust += gain; game.totalDust += gain;
+            game.cameraShake = 20;
+        }
+    }
+
+    function update(dt) {
+        let currentMult = game.multiplier * (game.boostTime > 0 ? 2 : 1) * (game.meteorBoostTime > 0 ? 5 : 1);
+        let currentDps = game.dps * currentMult;
+        game.dust += currentDps * dt; game.totalDust += currentDps * dt;
+
+        if (game.eggPulse < 1) game.eggPulse += dt * 3;
+        if (game.eggPulse > 1) game.eggPulse = 1;
+        game.eggAngle += dt * 0.2;
+
+        game.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= dt * 2; });
+        game.particles = game.particles.filter(p => p.life > 0);
+        
+        game.floatTexts.forEach(ft => { ft.y += ft.vy; ft.life -= dt * 1.2; });
+        game.floatTexts = game.floatTexts.filter(ft => ft.life > 0);
+
+        game.shockwaves.forEach(s => { s.radius += dt * 200; s.life -= dt * 2; });
+        game.shockwaves = game.shockwaves.filter(s => s.life > 0);
+
+        if (game.boostTime > 0) game.boostTime -= dt;
+        if (game.meteorBoostTime > 0) game.meteorBoostTime -= dt;
+        if (game.cameraShake > 0) game.cameraShake -= dt * 20;
+
+        if (Math.random() < 0.005) spawnMeteor();
+        game.meteors.forEach(m => { m.x += m.vx; m.y += m.vy; m.life -= dt; });
+        game.meteors = game.meteors.filter(m => m.life > 0 && m.x < W + 100);
+
+        if (game.rouletteSpinning) {
+            game.rouletteAngle += dt * 720;
+            if (Date.now() > game.rouletteStopTime) finishSpin();
+        }
+
+        game.stars.forEach(s => { s.x -= s.speed; if (s.x < 0) s.x = W; });
+
+        game.shopScroll += (game.shopScrollTarget - game.shopScroll) * Math.min(dt * 15, 1);
+
+        let targetAnim = game.uiPanelOpen ? 1 : 0;
+        game.panelAnim += (targetAnim - game.panelAnim) * Math.min(dt * 15, 1);
+    }
+
+    // ====================================================================================
+    // 5. RENDERING
+    // ====================================================================================
+    const images = {};
+    function loadAssets() {
+        [{ name: 'bg', src: 'assets/bg.png' }, { name: 'egg', src: 'assets/egg.png' }].forEach(a => {
+            let img = new Image(); img.src = a.src;
+            img.onload = () => images[a.name] = img;
+            img.onerror = () => images[a.name] = null;
+        });
+    }
+
+    function rect(x, y, w, h, r, fill, stroke) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+        if (fill) ctx.fill();
+        if (stroke) ctx.stroke();
+    }
+
+    function glassPanel(x, y, w, h, r = 15, alpha = 0.15) {
+        ctx.save();
+        ctx.fillStyle = `rgba(20, 20, 35, ${alpha})`;
+        rect(x, y, w, h, r, true, false);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.lineWidth = 1;
+        rect(x, y, w, h, r, false, true);
+        ctx.restore();
+    }
+    
+    function uiButton(id, x, y, w, h) {
+        game.uiElements.push({ id, x, y, w, h });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, W, H);
+        game.uiElements = []; 
+        
+        ctx.save();
+        if (game.cameraShake > 0) ctx.translate((Math.random()-0.5)*game.cameraShake, (Math.random()-0.5)*game.cameraShake);
+
+        drawBackground();
+        
+        let panelW = game.isMobile ? W * 0.85 : 340;
+        let playW = game.isMobile ? W : (W - panelW);
+        let panelX = W - panelW;
+        let panelVisibleX = panelX + (1 - game.panelAnim) * panelW;
+        
+        drawTopUI(playW);
+        drawEgg(playW);
+        drawShockwaves();
+        drawMeteors();
+        drawParticles();
+        
+        if (game.isMobile) drawMobileMenuButton();
+        
+        if (game.panelAnim > 0 && game.isMobile) {
+            ctx.fillStyle = `rgba(0, 0, 0, ${game.panelAnim * 0.6})`;
+            ctx.fillRect(0, 0, W, H);
+        }
+
+        if (game.panelAnim > 0.01) {
+            drawSidePanel(panelVisibleX, 0, panelW, H);
+        }
+
+        if (game.modal) drawModal();
+
+        ctx.restore();
+    }
+
+    function drawBackground() {
+        if (images.bg) {
+            ctx.drawImage(images.bg, 0, 0, W, H);
+        } else {
+            let grad = ctx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, '#09090f');
+            grad.addColorStop(0.5, '#120b20');
+            grad.addColorStop(1, '#05050a');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+            
+            game.stars.forEach(s => {
+                ctx.globalAlpha = s.alpha;
+                ctx.fillStyle = "#FFF";
+                ctx.fillRect(s.x, s.y, s.size, s.size);
+            });
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    function drawTopUI(playW) {
+        glassPanel(0, 0, playW, 90, 0, 0.2);
+        
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "bold 32px sans-serif";
+        ctx.fillText(formatNum(game.dust), playW/2, 35);
+        
+        ctx.font = "11px sans-serif";
+        ctx.fillStyle = "#9d4edd";
+        ctx.fillText(t.stardust.toUpperCase(), playW/2, 53);
+        
+        let currentMult = game.multiplier * (game.boostTime > 0 ? 2 : 1) * (game.meteorBoostTime > 0 ? 5 : 1);
+        let currentTap = game.tapPower * currentMult;
+        let currentDps = game.dps * currentMult;
+
+        ctx.font = "bold 14px sans-serif";
+        
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#FFD700";
+        ctx.fillText(formatNum(currentTap), playW/2 - 10, 75);
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = "#aaa";
+        ctx.fillText(t.perClick, playW/2 - 10, 86);
+
+        ctx.textAlign = "left";
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillStyle = "#00FF99";
+        ctx.fillText(formatNum(currentDps), playW/2 + 10, 75);
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = "#aaa";
+        ctx.fillText(t.perSecond, playW/2 + 10, 86);
+
+        if (!game.isMobile) {
+            uiButton('lang_toggle', playW - 110, 15, 40, 40);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(t.langBtn, playW - 90, 40);
+
+            uiButton('sound', playW - 55, 15, 40, 40);
+            ctx.fillStyle = soundEnabled ? "#FFF" : "#555";
+            ctx.font = "14px sans-serif";
+            ctx.fillText(soundEnabled ? "🔊" : "🔇", playW - 35, 40);
+        }
+    }
+
+    function drawMobileMenuButton() {
+        let btnSize = 50, x = 15, y = 15; // Слева сверху: правый угол занят сервисными кнопками VK
+        glassPanel(x, y, btnSize, btnSize, 10, 0.3);
+        
+        ctx.strokeStyle = "#FFF";
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x + 12, y + 18);
+        ctx.lineTo(x + 38, y + 18);
+        ctx.moveTo(x + 12, y + 25);
+        ctx.lineTo(x + 38, y + 25);
+        ctx.moveTo(x + 12, y + 32);
+        ctx.lineTo(x + 38, y + 32);
+        ctx.stroke();
+        
+        uiButton('toggle_menu', x, y, btnSize, btnSize);
+    }
+
+    function getEggStage() {
+        if (game.totalDust < 1000) return { color: '#9d4edd', glow: 'rgba(157, 78, 221, 0.4)', cracks: 0, orbit: 0 };
+        if (game.totalDust < 100000) return { color: '#e0aaff', glow: 'rgba(224, 170, 255, 0.4)', cracks: 2, orbit: 0 };
+        if (game.totalDust < 10000000) return { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.4)', cracks: 5, orbit: 3 };
+        if (game.totalDust < 1000000000) return { color: '#ffd700', glow: 'rgba(255, 215, 0, 0.4)', cracks: 10, orbit: 5 };
+        return { color: 'rainbow', glow: 'rgba(255, 255, 255, 0.5)', cracks: 20, orbit: 8 };
+    }
+
+    function drawEgg(playW) {
+        let eggSize = Math.min(playW, H) * 0.4 * game.eggPulse;
+        let eggX = playW/2, eggY = H/2 - 30;
+        let stage = getEggStage();
+
+        ctx.save();
+        ctx.translate(eggX, eggY);
+        ctx.rotate(Math.sin(game.eggAngle) * 0.05);
+
+        let glowSize = eggSize * 1.8;
+        let glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
+        glowGrad.addColorStop(0, stage.glow);
+        glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glowGrad;
+        ctx.beginPath(); ctx.arc(0, 0, glowSize, 0, Math.PI * 2); ctx.fill();
+
+        if (stage.orbit > 0) {
+            for(let i=0; i<stage.orbit; i++) {
+                let angle = game.eggAngle * 2 + (i * (Math.PI*2 / stage.orbit));
+                let ox = Math.cos(angle) * eggSize * 0.8;
+                let oy = Math.sin(angle) * eggSize * 0.8;
+                ctx.fillStyle = stage.color === 'rainbow' ? `hsl(${(Date.now()/10 + i*50)%360}, 100%, 60%)` : stage.color;
+                ctx.beginPath();
+                ctx.moveTo(ox, oy - 10);
+                ctx.lineTo(ox + 8, oy);
+                ctx.lineTo(ox, oy + 10);
+                ctx.lineTo(ox - 8, oy);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        if (images.egg) {
+            ctx.drawImage(images.egg, -eggSize/2, -eggSize/2, eggSize, eggSize);
+        } else {
+            ctx.beginPath();
+            ctx.ellipse(0, 0, eggSize/2, eggSize/1.5, 0, 0, Math.PI * 2);
+            let eggGrad = ctx.createRadialGradient(-eggSize/6, -eggSize/6, 5, 0, 0, eggSize);
+            if (stage.color === 'rainbow') {
+                let hue = (Date.now() / 10) % 360;
+                eggGrad.addColorStop(0, `hsl(${hue}, 100%, 80%)`);
+                eggGrad.addColorStop(0.5, `hsl(${hue+60}, 100%, 50%)`);
+                eggGrad.addColorStop(1, `hsl(${hue+120}, 100%, 20%)`);
+            } else {
+                eggGrad.addColorStop(0, '#ffffff');
+                eggGrad.addColorStop(0.3, stage.color);
+                eggGrad.addColorStop(1, '#000');
+            }
+            ctx.fillStyle = eggGrad; ctx.fill();
+            
+            if (stage.cracks > 0) {
+                ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+                ctx.shadowColor = 'rgba(255, 255, 0, 1)';
+                ctx.shadowBlur = 10;
+                ctx.lineWidth = 2;
+                for(let i=0; i<stage.cracks; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(Math.sin(i)*5, -eggSize/3);
+                    ctx.lineTo(Math.sin(i*2)*15, 0);
+                    ctx.lineTo(Math.cos(i)*10, eggSize/4);
+                    ctx.stroke();
+                }
+                ctx.shadowBlur = 0;
+            }
+        }
+        ctx.restore();
+        
+        uiButton('egg', eggX - eggSize/2, eggY - eggSize/1.5, eggSize, eggSize*1.5);
+    }
+
+    function drawShockwaves() {
+        game.shockwaves.forEach(s => {
+            ctx.strokeStyle = `rgba(255, 255, 255, ${s.life * 0.5})`;
+            ctx.lineWidth = 4 * s.life;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+    }
+
+    function drawMeteors() {
+        game.meteors.forEach(m => {
+            ctx.save();
+            ctx.translate(m.x, m.y);
+            let angle = Math.atan2(m.vy, m.vx);
+            ctx.rotate(angle);
+            
+            let grad = ctx.createLinearGradient(-60, 0, 0, 0);
+            grad.addColorStop(0, 'rgba(255, 165, 0, 0)');
+            grad.addColorStop(1, 'rgba(255, 165, 0, 1)');
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(-60, 0); ctx.lineTo(0, 8); ctx.closePath(); ctx.fill();
+            
+            ctx.fillStyle = "#FFD700";
+            ctx.shadowColor = "#FFD700";
+            ctx.shadowBlur = 15;
+            ctx.beginPath(); ctx.arc(0, 0, m.size/2, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.restore();
+            
+            uiButton('meteor_' + game.meteors.indexOf(m), m.x - m.size, m.y - m.size, m.size*2, m.size*2);
+        });
+    }
+
+    function drawParticles() {
+        ctx.globalCompositeOperation = 'lighter';
+        game.particles.forEach(p => {
+            ctx.globalAlpha = p.life; 
+            ctx.fillStyle = p.color;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.globalCompositeOperation = 'source-over';
+        
+        game.floatTexts.forEach(ft => {
+            ctx.globalAlpha = ft.life; 
+            ctx.fillStyle = ft.color || "#FFFFFF";
+            ctx.font = "bold 22px sans-serif"; ctx.textAlign = "center";
+            ctx.save();
+            ctx.translate(ft.x, ft.y);
+            ctx.rotate(ft.rot || 0);
+            ctx.fillText(ft.text, 0, 0);
+            ctx.restore();
+        });
+        ctx.globalAlpha = 1;
+    }
+
+    function drawSidePanel(x, y, w, h) {
+        glassPanel(x, y, w, h, 0, 0.6);
+        
+        if (game.isMobile) {
+            // Кнопки управления — слева, чтобы не перекрываться сервисными кнопками VK
+            let closeX = x + 15, closeY = 15;
+            uiButton('toggle_menu', closeX, closeY, 40, 40);
+            ctx.fillStyle = "#FFF"; ctx.font = "20px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText("✕", closeX + 20, closeY + 28);
+
+            uiButton('lang_toggle', closeX + 50, closeY, 40, 40);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif";
+            ctx.fillText(t.langBtn, closeX + 70, closeY + 28);
+
+            uiButton('sound', closeX + 100, closeY, 40, 40);
+            ctx.fillText(soundEnabled ? "🔊" : "🔇", closeX + 120, closeY + 28);
+        }
+
+        let tabs = [t.shop, t.quests, t.stats];
+        let tabKeys = ['shop', 'quests', 'stats'];
+        let tabY = game.isMobile ? y + 70 : y + 20; // На мобильных ниже — сверху строка кнопок ✕ / язык / звук
+        let tabW = w / 3;
+        tabs.forEach((tabName, i) => {
+            let tx = x + i * tabW;
+            let isActive = game.currentTab === tabKeys[i];
+            if (isActive) {
+                ctx.fillStyle = "rgba(157, 78, 221, 0.3)";
+                rect(tx, tabY, tabW, 40, 0, true, false);
+                ctx.fillStyle = "#9d4edd";
+                ctx.fillRect(tx + tabW*0.25, tabY + 38, tabW*0.5, 2);
+            }
+            ctx.fillStyle = isActive ? "#FFF" : "#888";
+            ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(tabName, tx + tabW/2, tabY + 25);
+            uiButton('tab_' + tabKeys[i], tx, tabY, tabW, 40);
+        });
+
+        let contentY = tabY + 55;
+        let contentH = h - 210; 
+        if (game.currentTab === 'shop') drawShopTab(x, contentY, w, contentH);
+        else if (game.currentTab === 'quests') drawQuestsTab(x, contentY, w, contentH);
+        else if (game.currentTab === 'stats') drawStatsTab(x, contentY, w, contentH);
+
+        drawPanelBottomButtons(x, h - 110, w);
+    }
+
+    function drawShopTab(px, py, pw, ph) {
+        let amounts = [1, 10, 25, "Max"];
+        let btnW = 50, btnH = 30, gap = 8;
+        let startX = px + pw/2 - (btnW * 4 + gap * 3) / 2;
+        amounts.forEach((amt, i) => {
+            let x = startX + i * (btnW + gap);
+            let isActive = game.buyAmount === amt;
+            ctx.fillStyle = isActive ? "#9d4edd" : "rgba(255,255,255,0.1)";
+            rect(x, py, btnW, btnH, 8, true, false);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(amt, x + btnW/2, py + 20);
+            uiButton('buy_amt_' + i, x, py, btnW, btnH);
+        });
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(px, py + 45, pw, ph - 45);
+        ctx.clip();
+
+        let itemW = pw - 20, itemH = 65;
+        let totalH = game.upgrades.length * (itemH + 10);
+        let maxScroll = Math.max(0, totalH - (ph - 45));
+        game.shopScrollTarget = Math.max(0, Math.min(game.shopScrollTarget, maxScroll));
+
+        game.upgrades.forEach((upg, i) => {
+            let iy = py + 45 + i * (itemH + 10) - game.shopScroll;
+            if (iy + itemH < py + 45 || iy > py + ph) return;
+            
+            let x = px + 10;
+            
+            let displayAmt = (upg.type === 'mult') ? 1 : (game.buyAmount === "Max" ? Math.max(1, getMaxBuy(upg)) : game.buyAmount);
+            let cost = getUpgradeCost(upg, displayAmt);
+            let canBuy = game.dust >= cost;
+            
+            ctx.fillStyle = canBuy ? "rgba(0, 255, 200, 0.15)" : "rgba(255, 255, 255, 0.05)";
+            ctx.strokeStyle = canBuy ? "#00FF99" : "rgba(255,255,255,0.15)";
+            ctx.lineWidth = 1;
+            rect(x, iy, itemW, itemH, 12, true, true);
+            
+            ctx.textAlign = "left"; 
+            ctx.fillStyle = "#FFFFFF";
+            ctx.font = "bold 16px sans-serif"; 
+            ctx.fillText(upg.name, x + 15, iy + 25);
+            
+            ctx.font = "13px sans-serif"; 
+            ctx.fillStyle = "#CCCCCC"; 
+            ctx.fillText(upg.desc, x + 15, iy + 48);
+            
+            ctx.textAlign = "right";
+            ctx.fillStyle = canBuy ? "#00FF99" : "#FF5555";
+            ctx.font = "bold 16px sans-serif";
+            ctx.fillText(formatNum(cost), x + itemW - 15, iy + 25);
+            
+            ctx.fillStyle = "#FFD700"; 
+            ctx.font = "12px sans-serif";
+            ctx.fillText(t.level + " " + upg.level, x + itemW - 15, iy + 48);
+            
+            uiButton('upg_' + i, x, iy, itemW, itemH);
+        });
+
+        ctx.restore();
+
+        if (totalH > ph - 45) {
+            let scrollBarH = (ph - 45) * (ph - 45) / totalH;
+            let scrollBarY = py + 45 + game.shopScroll * ((ph - 45 - scrollBarH) / maxScroll);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+            rect(px + pw - 8, scrollBarY, 4, scrollBarH, 2, true, false);
+        }
+    }
+
+    function drawQuestsTab(px, py, pw, ph) {
+        ctx.textAlign = "center"; ctx.fillStyle = "#FFD700"; ctx.font = "bold 15px sans-serif";
+        ctx.fillText(t.questRewardInfo, px + pw/2, py + 10);
+        ctx.fillStyle = "#FFF"; ctx.font = "13px sans-serif";
+        ctx.fillText(t.questsCompleted + game.quests.completedCount, px + pw/2, py + 35);
+
+        let allDone = game.quests.data.length > 0 && game.quests.data.every(q => q.done);
+        
+        game.quests.data.forEach((q, i) => {
+            let py2 = py + 60 + i * 75;
+            glassPanel(px + 10, py2, pw - 20, 60, 10, 0.1);
+            
+            ctx.textAlign = "left"; ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif";
+            ctx.fillText(q.text, px + 20, py2 + 22);
+            
+            let prog = Math.min(1, q.current / q.target);
+            ctx.fillStyle = "rgba(255,255,255,0.1)";
+            rect(px + 20, py2 + 35, pw - 40, 10, 5, true, false);
+            ctx.fillStyle = q.done ? "#00FF99" : "#9d4edd";
+            rect(px + 20, py2 + 35, (pw - 40) * prog, 10, 5, true, false);
+            
+            ctx.textAlign = "right"; ctx.fillStyle = "#FFF"; ctx.font = "11px sans-serif";
+            ctx.fillText(q.current + " / " + q.target, px + pw - 20, py2 + 22);
+        });
+
+        let btnY = py + 285;
+        if (allDone) {
+            ctx.fillStyle = "#FFD700"; rect(px + 10, btnY, pw - 20, 45, 10, true, false);
+            ctx.fillStyle = "#000"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(t.claim, px + pw/2, btnY + 28);
+            uiButton('claim_quests', px + 10, btnY, pw - 20, 45);
+        } else {
+            ctx.fillStyle = "#666"; ctx.font = "13px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(t.inProgress, px + pw/2, btnY + 28);
+        }
+    }
+
+    function drawStatsTab(px, py, pw, ph) {
+        ctx.textAlign = "left"; ctx.fillStyle = "#FFF"; ctx.font = "15px sans-serif";
+        let stats = [
+            t.totalClicks + ": " + formatNum(game.totalClicks),
+            t.totalDust + ": " + formatNum(game.totalDust),
+            t.meteorsCaught + ": " + game.meteorsCaught,
+            t.playTime + ": " + formatTime((Date.now() - game.startTime) / 1000)
+        ];
+        stats.forEach((s, i) => ctx.fillText(s, px + 20, py + 30 + i * 35));
+    }
+
+    function drawPanelBottomButtons(px, py, pw) {
+        if (!adsUI) return; // Реклама не подключена: рекламные кнопки скрыты
+        let btnW = (pw - 30) / 2, btnH = 45;
+        let btns = [
+            { text: t.boost2x, color1: "#7c3aed", color2: "#5b21b6", action: 'boost' },
+            { text: t.instantOffline, color1: "#0284c7", color2: "#0369a1", action: 'offline' }
+        ];
+        btns.forEach((b, i) => {
+            let x = px + 10 + i * (btnW + 10);
+            let grad = ctx.createLinearGradient(x, py, x, py + btnH);
+            grad.addColorStop(0, b.color1);
+            grad.addColorStop(1, b.color2);
+            ctx.fillStyle = grad;
+            rect(x, py, btnW, btnH, 12, true, false);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(b.text, x + btnW/2, py + 28);
+            uiButton('ad_' + b.action, x, py, btnW, btnH);
+        });
+
+        let rBtnY = py + 55;
+        let grad = ctx.createLinearGradient(px + 10, rBtnY, px + 10 + pw - 20, rBtnY);
+        grad.addColorStop(0, "#d97706");
+        grad.addColorStop(1, "#b45309");
+        ctx.fillStyle = grad;
+        rect(px + 10, rBtnY, pw - 20, btnH, 12, true, false);
+        ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("🎰 " + t.roulette, px + pw/2, rBtnY + 28);
+        uiButton('ad_roulette', px + 10, rBtnY, pw - 20, btnH);
+    }
+
+    function drawModal() {
+        ctx.fillStyle = "rgba(0,0,0,0.85)";
+        ctx.fillRect(0, 0, W, H);
+        let mW = W * 0.85, mH = H * 0.7, mX = W/2 - mW/2, mY = H/2 - mH/2;
+        glassPanel(mX, mY, mW, mH, 20, 0.1);
+        
+        ctx.fillStyle = "#FFF"; ctx.textAlign = "center"; ctx.font = "bold 24px sans-serif";
+        ctx.fillText(t.roulette, W/2, mY + 40);
+
+        let cX = W/2, cY = mY + mH/2 - 20, r = Math.min(mW, mH) * 0.3;
+        let colors = ["#FFD700", "#3a0ca3", "#FFD700", "#3a0ca3", "#FF00FF", "#3a0ca3", "#FFD700", "#3a0ca3"];
+        let prizes = ["x2", lang === 'ru' ? "Пыль" : "Dust", "x2", lang === 'ru' ? "Пусто" : "Empty", lang === 'ru' ? "ДЖ" : "JACK", lang === 'ru' ? "Пусто" : "Empty", "x2", lang === 'ru' ? "Пыль" : "Dust"];
+        
+        for(let i=0; i<8; i++) {
+            let startAngle = (i * Math.PI / 4) + (game.rouletteAngle * Math.PI / 180);
+            let endAngle = startAngle + Math.PI / 4;
+            ctx.beginPath();
+            ctx.moveTo(cX, cY);
+            ctx.arc(cX, cY, r, startAngle, endAngle);
+            ctx.fillStyle = colors[i]; ctx.fill();
+            ctx.strokeStyle = "#FFF"; ctx.lineWidth = 2; ctx.stroke();
+            
+            ctx.save();
+            ctx.translate(cX, cY);
+            ctx.rotate(startAngle + Math.PI / 8);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "right";
+            ctx.fillText(prizes[i], r - 10, 5);
+            ctx.restore();
+        }
+        
+        ctx.fillStyle = "#FFF";
+        ctx.beginPath(); 
+        ctx.moveTo(cX, cY - r - 10); 
+        ctx.lineTo(cX - 10, cY - r + 10); 
+        ctx.lineTo(cX + 10, cY - r + 10); 
+        ctx.closePath(); 
+        ctx.fill();
+
+        let btnY = mY + mH - 50;
+        if (game.rouletteResult) {
+            ctx.fillStyle = "#FFD700"; ctx.font = "bold 18px sans-serif";
+            ctx.fillText(t.won + " " + game.rouletteResult, W/2, btnY - 15);
+
+            let btnW = 140, btnGap = 20;
+            let totalW = btnW * 2 + btnGap;
+            let startX = W/2 - totalW/2;
+
+            ctx.fillStyle = "#555"; rect(startX, btnY, btnW, 40, 10, true, false);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.fillText(t.close, startX + btnW/2, btnY + 25);
+            uiButton('close_modal', startX, btnY, btnW, 40);
+
+            if (adsUI) {
+                let x2 = startX + btnW + btnGap;
+                let grad = ctx.createLinearGradient(x2, btnY, x2 + btnW, btnY);
+                grad.addColorStop(0, "#f59e0b"); grad.addColorStop(1, "#d97706");
+                ctx.fillStyle = grad; rect(x2, btnY, btnW, 40, 10, true, false);
+                ctx.fillStyle = "#FFF"; ctx.font = "bold 12px sans-serif"; ctx.fillText(t.spinAgain, x2 + btnW/2, btnY + 25);
+                uiButton('spin_again', x2, btnY, btnW, 40);
+            }
+
+        } else if (!game.rouletteSpinning && adsUI) {
+            let btnW = 180;
+            if (game.freeSpins > 0) {
+                let grad = ctx.createLinearGradient(W/2 - btnW/2, btnY, W/2 + btnW/2, btnY);
+                grad.addColorStop(0, "#10b981"); grad.addColorStop(1, "#059669");
+                ctx.fillStyle = grad; rect(W/2 - btnW/2, btnY, btnW, 40, 10, true, false);
+                ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.fillText(t.freeSpin + " ("+game.freeSpins+")", W/2, btnY + 25);
+                uiButton('spin_roulette', W/2 - btnW/2, btnY, btnW, 40);
+            } else {
+                let grad = ctx.createLinearGradient(W/2 - btnW/2, btnY, W/2 + btnW/2, btnY);
+                grad.addColorStop(0, "#f59e0b"); grad.addColorStop(1, "#d97706");
+                ctx.fillStyle = grad; rect(W/2 - btnW/2, btnY, btnW, 40, 10, true, false);
+                ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.fillText(t.spinAd, W/2, btnY + 25);
+                uiButton('spin_roulette', W/2 - btnW/2, btnY, btnW, 40);
+            }
+        }
+    }
+
+    function formatNum(num) {
+        if (num < 1000) return Math.floor(num);
+        let units = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+        let order = Math.floor(Math.log10(num) / 3);
+        if (order >= units.length) order = units.length - 1;
+        let unit = units[order];
+        let value = num / Math.pow(1000, order);
+        return value.toFixed(2) + unit;
+    }
+
+    function formatTime(s) {
+        let h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+        let hStr = lang === 'ru' ? "ч " : "h ";
+        let mStr = lang === 'ru' ? "м " : "m ";
+        let sStr = lang === 'ru' ? "с" : "s";
+        return h + hStr + m + mStr + sec + sStr;
+    }
+
+    // ====================================================================================
+    // 6. INPUT HANDLING
+    // ====================================================================================
+    function handleInput(e) {
+        e.preventDefault(); initAudio();
+        if (game.shopTouchActive) return;
+        
+        let clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        let clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        let x = clientX - canvas.getBoundingClientRect().left;
+        let y = clientY - canvas.getBoundingClientRect().top;
+
+        for(let i=game.uiElements.length-1; i>=0; i--) {
+            let ui = game.uiElements[i];
+            if (x >= ui.x && x <= ui.x + ui.w && y >= ui.y && y <= ui.y + ui.h) {
+                handleUIClick(ui.id);
+                return;
+            }
+        }
+    }
+
+    canvas.addEventListener('wheel', (e) => {
+        if (game.currentTab === 'shop' && game.uiPanelOpen) {
+            game.shopScrollTarget += e.deltaY * 0.5;
+        }
+    });
+
+    let touchStartY = 0, touchStartX = 0;
+    canvas.addEventListener('touchstart', (e) => {
+        touchStartY = e.touches[0].clientY;
+        touchStartX = e.touches[0].clientX;
+        game.shopTouchActive = false;
+    }, { passive: false });
+    
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (game.currentTab === 'shop' && game.uiPanelOpen) {
+            let deltaY = touchStartY - e.touches[0].clientY;
+            let deltaX = touchStartX - e.touches[0].clientX;
+            if (Math.abs(deltaY) > 10 && Math.abs(deltaY) > Math.abs(deltaX)) {
+                game.shopScrollTarget += deltaY;
+                touchStartY = e.touches[0].clientY;
+                game.shopTouchActive = true;
+            }
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', () => {
+        setTimeout(() => { game.shopTouchActive = false; }, 100);
+    });
+    
+    function handleUIClick(id) {
+        if (id === 'egg') { 
+            let playW = game.isMobile ? W : (W - 340);
+            clickEgg(playW/2, H/2 - 30); 
+            return; 
+        }
+        if (id === 'toggle_menu') { 
+            if (game.isMobile) {
+                game.uiPanelOpen = !game.uiPanelOpen;
+                if (game.uiPanelOpen) game.currentTab = 'shop';
+            }
+            return; 
+        }
+        if (id === 'lang_toggle') { 
+            setLanguage(lang === 'ru' ? 'en' : 'ru');
+            return; 
+        }
+        if (id === 'sound') { soundEnabled = !soundEnabled; return; }
+        if (id.startsWith('meteor_')) { clickMeteor(game.meteors[parseInt(id.split('_')[1])]); return; }
+        if (id.startsWith('tab_')) { game.currentTab = id.split('_')[1]; return; }
+        if (id.startsWith('buy_amt_')) { 
+            let amts = [1, 10, 25, "Max"]; 
+            game.buyAmount = amts[parseInt(id.split('_')[2])]; 
+            return; 
+        }
+        if (id.startsWith('upg_')) { buyUpgrade(parseInt(id.split('_')[1])); return; }
+        if (id === 'claim_quests') { claimQuests(); return; }
+        if (id === 'close_modal') { 
+            game.modal = null; 
+            game.rouletteResult = null;
+            showInterstitial();
+            return; 
+        }
+        if (id === 'spin_roulette') { spinRoulette(); return; }
+        if (id === 'spin_again') { showRewarded('roulette'); return; } 
+        if (id === 'ad_boost') { showRewarded('boost'); return; }
+        if (id === 'ad_offline') { showRewarded('offline'); return; }
+        if (id === 'ad_roulette') { game.modal = 'roulette'; return; }
+    }
+
+    canvas.addEventListener('mousedown', handleInput);
+    canvas.addEventListener('touchstart', handleInput, { passive: false });
+
+    // ====================================================================================
+    // 7. SAVE & LOAD — С ПОЛНОЙ ЗАЩИТОЙ ОТ ОШИБОК
+    // ====================================================================================
+    
+    // Компактный сейв: только нужные данные (лимит VK Storage — 8192 символа)
+    function buildSave() {
+        return JSON.stringify({
+            v: 12,
+            dust: game.dust,
+            totalDust: game.totalDust,
+            totalClicks: game.totalClicks,
+            meteorsCaught: game.meteorsCaught,
+            startTime: game.startTime,
+            lastSave: game.lastSave,
+            freeSpins: game.freeSpins,
+            lastSpinReset: game.lastSpinReset,
+            quests: game.quests,
+            upgrades: game.upgrades.map(u => ({ level: u.level }))
+        });
+    }
+
+    async function saveGame() {
+        try {
+            game.lastSave = Date.now();
+            let saveStr = buildSave();
+            // Шаг 1: локальное сохранение (всегда, мгновенно)
+            localStorage.setItem(SAVE_KEY, saveStr);
+            // Шаг 2: облачное сохранение в хранилище VK
+            if (vk) { 
+                await vk.send('VKWebAppStorageSet', { key: SAVE_KEY, value: saveStr }); 
+            }
+        } catch(e) {
+            console.error("saveGame error:", e);
+            throw e; // Пробрасываем дальше для catch в setInterval
+        }
+    }
+
+    // loadGame() полностью защищена от падений
+    async function loadGame() {
+        initUpgrades();
+        let saveData = null;
+        
+        // Шаг 1: Пробуем загрузить из облачного хранилища VK
+        if (vk) {
+            try { 
+                let d = await vk.send('VKWebAppStorageGet', { key: SAVE_KEY }); 
+                let val = d && d.keys && d.keys[0] && d.keys[0].value;
+                if (val) saveData = JSON.parse(val); 
+            } catch(e) {
+                console.warn("VK StorageGet error, trying localStorage:", e);
+            }
+        }
+        
+        // Шаг 2: Фолбэк на localStorage (с защитой от битого JSON!)
+        if (!saveData) { 
+            try {
+                let ls = localStorage.getItem(SAVE_KEY); 
+                if (ls) saveData = JSON.parse(ls); 
+            } catch(e) {
+                // КРИТИЧНО: удаляем битый сейв, иначе будем падать при каждой загрузке
+                console.error("Corrupted localStorage save, wiping it:", e);
+                localStorage.removeItem(SAVE_KEY);
+            }
+        }
+
+        if (saveData) {
+            game.dust = saveData.dust || 0; 
+            game.totalDust = saveData.totalDust || 0;
+            game.totalClicks = saveData.totalClicks || 0; 
+            game.meteorsCaught = saveData.meteorsCaught || 0;
+            game.startTime = saveData.startTime || Date.now();
+            game.lastSave = saveData.lastSave || Date.now();
+            game.freeSpins = saveData.freeSpins || 1; 
+            game.lastSpinReset = saveData.lastSpinReset || Date.now();
+            
+            if (saveData.quests && saveData.quests.data && saveData.quests.data.length > 0) {
+                game.quests = saveData.quests;
+            } else {
+                generateNewQuests();
+            }
+
+            if (saveData.upgrades) {
+                saveData.upgrades.forEach((su, i) => { 
+                    if (game.upgrades[i]) game.upgrades[i].level = su.level; 
+                });
+            }
+            recalcStats();
+            
+            let offlineTime = Math.min((Date.now() - game.lastSave) / 1000, 14400);
+            let offlineGain = game.dps * game.multiplier * offlineTime * 0.5;
+            if (offlineGain > 0) {
+                game.dust += offlineGain; 
+                game.totalDust += offlineGain;
+                game.floatTexts.push({ 
+                    x: W/2, y: H/2, 
+                    text: t.offlineEarnings + ": " + formatNum(offlineGain), 
+                    life: 3, vy: -1, color: "#00FF99" 
+                });
+            }
+        } else {
+            generateNewQuests();
+        }
+
+        // Инициализация звёзд (один раз)
+        if (game.stars.length === 0) {
+            for(let i=0; i<150; i++) {
+                game.stars.push({
+                    x: Math.random() * W,
+                    y: Math.random() * H,
+                    size: Math.random() * 2 + 0.5,
+                    speed: Math.random() * 0.5 + 0.1,
+                    alpha: Math.random() * 0.5 + 0.5
+                });
+            }
+        }
+        
+        // ВАЖНО: setInterval больше НЕ здесь! 
+        // Он вынесен в initYandex() и создаётся только один раз.
+    }
+
+    // ====================================================================================
+    // 8. ADVERTISEMENT
+    // ====================================================================================
+    async function showInterstitial() {
+        if (!vk || !adsUI) return; // Реклама не подключена — не показываем
+        try {
+            await vk.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' });
+        } catch (e) {
+            console.log("Interstitial error:", e);
+        }
+        game.lastTick = Date.now();
+    }
+
+    async function showRewarded(type) {
+        let reward = () => {
+            if (type === 'boost') game.boostTime = 120;
+            else if (type === 'offline') {
+                let gain = Math.max(1000, game.dps * game.multiplier * 7200);
+                game.dust += gain; game.totalDust += gain; game.cameraShake = 20;
+                game.floatTexts.push({ x: W/2, y: H/2, text: t.rewardOffline, life: 2, vy: -2, color: "#008CBA" });
+            } else if (type === 'roulette') { 
+                game.rouletteResult = null; 
+                startSpin(); 
+            }
+        };
+
+        if (vk && adsUI) {
+            try {
+                game.state = 'paused';
+                await vk.send('VKWebAppShowNativeAds', { ad_format: 'rewarded' });
+                reward();
+            } catch (e) {
+                console.log("Rewarded error:", e);
+            }
+            game.state = 'playing';
+            game.lastTick = Date.now();
+        } else { 
+            // Реклама не подключена — выдаём награду напрямую (страховка от мёртвых кнопок)
+            reward(); 
+        }
+    }
+
+    // ====================================================================================
+    // 9. GAME LOOP
+    // ====================================================================================
+    function gameLoop() {
+        let now = Date.now();
+        let dt = (now - game.lastTick) / 1000;
+        game.lastTick = now;
+        if (game.state === 'playing') {
+            update(Math.min(dt, 0.1));
+            draw();
+        }
+        requestAnimationFrame(gameLoop);
+    }
+
+    // ====================================================================================
+    // 10. INIT
+    // ====================================================================================
+    function init() {
+        resize();
+        loadAssets();
+        initPlatform();
+    }
+    init();
+    </script>
+</body>
+</html>
