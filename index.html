@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, user-scalable=no, viewport-fit=cover">
-    <title>Космическое Яйцо — Idle Clicker</title>
+    <title>Космическое Яйцо — Космический Тайкун</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <style>
         * {
@@ -34,9 +34,12 @@
             animation: spin 1s linear infinite; margin-bottom: 20px;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Баннерная реклама: полная ширина низа экрана, всегда поверх игры */
         #bannerAd {
-            position: fixed; transform: translateX(-50%); z-index: 60;
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
             display: none; text-align: center; line-height: 0;
+            background: rgba(7, 7, 16, 0.95);
+            border-top: 1px solid rgba(157, 78, 221, 0.35);
         }
     </style>
     <script src="vk-bridge.js"></script>
@@ -48,10 +51,17 @@
     </div>
     <canvas id="gameCanvas"></canvas>
     <div id="bannerAd"></div>
-    
+
     <script>
     // ====================================================================================
-    // COSMIC EGG: IDLE CLICKER - VK EDITION (v2.0 - VK Bridge)
+    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v3.1)
+    // Глубокий менеджмент-тайкун: 6 бизнесов с автоматическим производством,
+    // склад яиц, биржа с колеблющимися ценами, заказы планет, улучшения,
+    // НАУКА и дерево из 24 технологий с таймерами исследований,
+    // КОЛОНИИ на 3 планетах (Терра-9 / Криос / Пирит) с раздельными бизнесами,
+    // ЭНЕРГОСИСТЕМА (реактор, потребление, эффективность производства),
+    // цепочка из 36 целей империи, события (кометы/НЛО/дождь) и престиж.
+    // Рекламный стек VK сохранён: interstitial каждые 3 мин, rewarded-кнопки, баннер.
     // ====================================================================================
 
     const canvas = document.getElementById('gameCanvas');
@@ -59,7 +69,7 @@
     const loadingScreen = document.getElementById('loadingScreen');
 
     let W, H, DPR;
-    
+
     function resize() {
         DPR = window.devicePixelRatio || 1;
         W = window.innerWidth;
@@ -69,7 +79,7 @@
         canvas.style.width = W + 'px';
         canvas.style.height = H + 'px';
         ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-        
+
         game.isMobile = W <= 820 || (W < H);
         if (!game.isMobile) game.uiPanelOpen = true;
         positionBannerAd();
@@ -81,13 +91,13 @@
     document.addEventListener('dragstart', (e) => e.preventDefault());
 
     // ====================================================================================
-    // 1. VK BRIDGE & LOCALIZATION
+    // 1. VK BRIDGE & МОНЕТИЗАЦИЯ (сохранено из кликер-версии)
     // ====================================================================================
     // НАСТРОЙКА МОНЕТИЗАЦИИ:
     // • Полноэкранная (interstitial) реклама — автоматически каждые 3 минуты игры,
-    //   а также после закрытия рулетки и забора награды за задания.
-    // • Rewarded-реклама — кнопки «x2 Доход», «2ч Офлайн», «Рулетка» (только внутри VK).
-    // • Баннерная реклама — HTML-слот внизу экрана, настройки в BANNER_CONFIG ниже.
+    //   а также после закрытия лотереи и сдачи заказа планете.
+    // • Rewarded-реклама — кнопки «x2 Доход», «2ч Офлайн», «Лотерея» (только внутри VK).
+    // • Баннерная реклама — HTML-слот на всю ширину низа экрана, BANNER_CONFIG ниже.
     // Внутри VK используется официальный API: VKWebAppShowNativeAds (нужна включённая
     // монетизация: dev.vk.com → приложение → Монетизация).
     // ADS_DEBUG = true — вне VK показываются ДЕМО-заглушки рекламы (для локальной
@@ -96,12 +106,14 @@
     const INTERSTITIAL_INTERVAL = 180;   // секунд между полноэкранными рекламами
     const ADS_DEBUG = true;
 
-    // Баннерная реклама (внизу экрана, над игровой областью):
+    // Баннерная реклама (полная ширина, низ экрана):
+    // • Баннер ВСЕГДА виден (в VK и вне его).
+    // • Пока BANNER_CONFIG.html пуст — крутится «домашний» баннер с подсказками игры.
+    // • Вставьте код рекламной сети (VK Рекламная сеть / Яндекс РСЯ) — он отрендерится
+    //   в изолированном iframe на всю ширину вместо подсказок.
     const BANNER_CONFIG = {
         enabled: true,   // баннер включён
-        html: "",        // код рекламной сети (VK Рекламная сеть / Яндекс РСЯ и т.п.).
-                         // Если пусто и включён ADS_DEBUG — показывается демо-баннер.
-                         // Внутри VK без кода сети баннер скрыт.
+        html: "",        // код рекламной сети (пока пусто — подсказки игры)
         height: 50       // высота баннера в px
     };
 
@@ -109,72 +121,128 @@
     let inVK = false;    // флаг «запущено внутри ВКонтакте»
     let adsUI = false;   // показывать ли рекламные кнопки
     let lang = 'ru';
-    const SAVE_KEY = 'cosmicEggSaveV12';
+    const SAVE_KEY = 'cosmicEggTycoonV1';
 
     const i18n = {
         ru: {
             loading: "Загрузка Космоса...",
-            stardust: "Звездная пыль", perSecond: "в сек", perClick: "за клик",
-            shop: "Магазин", quests: "Задания", stats: "Статы",
-            boost2x: "📺 Реклама: x2 Доход",
-            instantOffline: "📺 Реклама: 2ч Офлайн",
-            totalClicks: "Всего кликов", totalDust: "Всего пыли", meteorsCaught: "Поймано метеоритов", playTime: "Время в игре",
-            offlineEarnings: "Оффлайн доход", level: "Ур.", cost: "Цена",
-            soundOn: "Звук", soundOff: "Мьют",
-            questClicks: "Сделайте кликов", questBuy: "Купите улучшений", questMeteors: "Поймайте метеоритов",
-            questsCompleted: "Выполнено циклов: ", questRewardInfo: "Награда за цикл: 1 час дохода",
-            claim: "Забрать награду", inProgress: "Выполняйте задания для награды",
-            roulette: "Рулетка", freeSpin: "Бесплатно",
-            spinAd: "📺 Смотреть рекламу",
-            spinAgain: "📺 Ещё раз (Реклама)",
-            won: "Вы выиграли:", close: "Закрыть", meteorAlert: "МЕТЕОРИТ!",
-            rewardOffline: "+2ч дохода!", rewardQuests: "Награда: +",
+            crystals: "Кристаллы",
+            perSec: "/с", secShort: "с",
+            storageLbl: "Склад",
+            autoSellLbl: "🤖 Авто-продажа",
+            reserveLbl: "📦 резерв под заказ",
+            mgrHired: "в команде · производство x2",
+            tabBiz: "Бизнесы", tabUp: "Улучшения", tabSci: "Наука", tabStat: "Статус",
+            sciShort: "🧪 Наука", energyShort: "⚡",
+            effWarn: "нехватка энергии",
+            researchDone: "✅ Изучено: ",
+            rush: "Ускорить", noScience: "Мало науки",
+            techReq: "Сначала: ",
+            techIdle: "Выбери технологию для изучения",
+            techLeft: "осталось",
+            reactor: "⚡ Реактор", reactorLvl: "ур.", reactorPower: "Мощность", reactorCons: "Потребление", reactorUp: "Улучшить",
+            planetsLbl: "Колонии",
+            planetLocked: "Нужна технология", planetOpen: "Открыть",
+            missionLbl: "ЦЕЛЬ ИМПЕРИИ",
+            missionDone: "🎯 Цель выполнена: ",
+            missionAllDone: "🏁 Все цели империи выполнены!",
+            statsTechs: "Изучено технологий", statsMissions: "Выполнено целей", statsPlanets: "Открыто колоний",
+            buy: "Купить", lvl: "шт", max: "Макс",
+            perCycle: "за цикл", msAt: "x2 через",
+            eggLbl: "🥚", crysLbl: "💎",
+            contractLbl: "Заказ с планеты", contractReward: "Награда", contractClaim: "Сдать",
+            contractNext: "Новый заказ через",
+            storageFull: "⚠ СКЛАД ПОЛОН — улучшай склад",
+            marketUp: "📈 Праздник на планете! Цены на яйца x2.5 (25с)",
+            marketDown: "📉 Кризис на рынке! Цены x0.5 (25с)",
+            cometName: "☄ Золотая комета", cometHint: "кликни 3 раза!", cometToast: "☄ Комета: производство x2 на 60с!",
+            ufoName: "🛸 НЛО-торговец", ufoHint: "кликни!",
+            giftCrystals: "🛸 НЛО: +", giftBoost: "🛸 НЛО: ускорение x2 на 90с!", giftFill: "🛸 НЛО: заполнил склад яйцами!",
+            rainName: "☄ Метеоритный дождь",
+            boost2x: "📺 x2 Доход", instantOffline: "📺 2ч Офлайн",
+            lottery: "Лотерея", freeSpin: "Бесплатно", spinAd: "📺 Смотреть рекламу",
+            spinAgain: "📺 Ещё раз", won: "Выигрыш:", close: "Закрыть",
+            rewardOffline: "+2ч дохода!",
+            statsTotal: "Всего кристаллов", statsRun: "Заработано за забег", statsEggs: "Произведено яиц",
+            statsSold: "Продано яиц", statsContracts: "Выполнено заказов", statsEvents: "Событий поймано",
+            statsMgrs: "Менеджеров в команде", statsTime: "Время в игре", statsPrestiges: "Больших взрывов",
+            achvLbl: "Достижения",
+            shardsLbl: "Осколки Вселенной", prestige: "💥 Большой Взрыв",
+            prestigeLines: ["Сбрось прогресс забега и получи Осколки", "Вселенной: каждый осколок даёт +10%", "ко всему производству. Технологии", "и колонии остаются навсегда."],
+            prestigeGain: "Ты получишь:",
+            prestigeNeed: "Нужно заработать 500K кристаллов за забег",
+            prestigeConfirm: "ВЗОРВАТЬ!", prestigeCancel: "Отмена",
+            prestigeToast: "💥 Большой Взрыв! +",
+            prodRush: "⚡ Ускорение производства x2",
+            prodRushShort: "⚡ x2",
+            bannerTips: ["🤖 Робот-кассир продаёт яйца сам — ты управляешь империей!", "🐔 Бизнесы работают 24/7 — нанимай менеджеров!", "🧪 Изучай технологии: они открывают новые планеты!", "📦 Выполняй заказы планет за премиальную цену!", "⚡ Следи за энергией: строй Реактор для роста!", "☄ Лови кометы: ускорение производства x2!", "🪐 Открывай колонии: Криос и Пирит ждут!", "💥 Большой Взрыв: +10% производства за осколок!"],
             langBtn: "EN"
         },
         en: {
             loading: "Loading Space...",
-            stardust: "Stardust", perSecond: "per sec", perClick: "per click",
-            shop: "Shop", quests: "Quests", stats: "Stats",
-            boost2x: "📺 Ad: x2 Income",
-            instantOffline: "📺 Ad: 2h Offline",
-            totalClicks: "Total clicks", totalDust: "Total dust", meteorsCaught: "Meteors caught", playTime: "Play time",
-            offlineEarnings: "Offline earnings", level: "Lvl.", cost: "Cost",
-            soundOn: "Sound", soundOff: "Mute",
-            questClicks: "Make clicks", questBuy: "Buy upgrades", questMeteors: "Catch meteors",
-            questsCompleted: "Cycles completed: ", questRewardInfo: "Cycle reward: 1 hour income",
-            claim: "Claim Reward", inProgress: "Complete quests for reward",
-            roulette: "Roulette", freeSpin: "Free",
-            spinAd: "📺 Watch Ad",
-            spinAgain: "📺 Spin Again (Ad)",
-            won: "You won:", close: "Close", meteorAlert: "METEOR!",
-            rewardOffline: "+2h income!", rewardQuests: "Reward: +",
+            crystals: "Crystals",
+            perSec: "/s", secShort: "s",
+            storageLbl: "Storage",
+            autoSellLbl: "🤖 Auto-sell",
+            reserveLbl: "📦 order reserve",
+            mgrHired: "on the team · production x2",
+            tabBiz: "Business", tabUp: "Upgrades", tabSci: "Science", tabStat: "Status",
+            sciShort: "🧪 Science", energyShort: "⚡",
+            effWarn: "power shortage",
+            researchDone: "✅ Researched: ",
+            rush: "Rush", noScience: "Not enough science",
+            techReq: "Requires: ",
+            techIdle: "Pick a technology to research",
+            techLeft: "left",
+            reactor: "⚡ Reactor", reactorLvl: "lvl", reactorPower: "Output", reactorCons: "Consumption", reactorUp: "Upgrade",
+            planetsLbl: "Colonies",
+            planetLocked: "Technology required", planetOpen: "Unlock",
+            missionLbl: "EMPIRE GOAL",
+            missionDone: "🎯 Goal complete: ",
+            missionAllDone: "🏁 All empire goals complete!",
+            statsTechs: "Technologies researched", statsMissions: "Goals completed", statsPlanets: "Colonies unlocked",
+            buy: "Buy", lvl: "pcs", max: "Max",
+            perCycle: "per cycle", msAt: "x2 in",
+            eggLbl: "🥚", crysLbl: "💎",
+            contractLbl: "Order from planet", contractReward: "Reward", contractClaim: "Deliver",
+            contractNext: "New order in",
+            storageFull: "⚠ STORAGE FULL — upgrade storage",
+            marketUp: "📈 Planet festival! Egg prices x2.5 (25s)",
+            marketDown: "📉 Market crisis! Prices x0.5 (25s)",
+            cometName: "☄ Golden Comet", cometHint: "tap 3 times!", cometToast: "☄ Comet: production x2 for 60s!",
+            ufoName: "🛸 Trader UFO", ufoHint: "tap it!",
+            giftCrystals: "🛸 UFO: +", giftBoost: "🛸 UFO: production x2 for 90s!", giftFill: "🛸 UFO: filled your storage with eggs!",
+            rainName: "☄ Meteor Shower",
+            boost2x: "📺 x2 Income", instantOffline: "📺 2h Offline",
+            lottery: "Lottery", freeSpin: "Free", spinAd: "📺 Watch Ad",
+            spinAgain: "📺 Again", won: "You won:", close: "Close",
+            rewardOffline: "+2h income!",
+            statsTotal: "Total crystals", statsRun: "Earned this run", statsEggs: "Eggs produced",
+            statsSold: "Eggs sold", statsContracts: "Orders completed", statsEvents: "Events caught",
+            statsMgrs: "Managers on the team", statsTime: "Play time", statsPrestiges: "Big Bangs",
+            achvLbl: "Achievements",
+            shardsLbl: "Universe Shards", prestige: "💥 Big Bang",
+            prestigeLines: ["Reset your run and earn Universe Shards:", "each shard gives +10% to all production.", "Technologies and colonies", "stay with you forever."],
+            prestigeGain: "You will get:",
+            prestigeNeed: "Earn 500K crystals in this run first",
+            prestigeConfirm: "BLOW IT UP!", prestigeCancel: "Cancel",
+            prestigeToast: "💥 Big Bang! +",
+            prodRush: "⚡ Production rush x2",
+            prodRushShort: "⚡ x2",
+            bannerTips: ["🤖 The Cashier Bot sells eggs for you — you run the empire!", "🐔 Businesses produce 24/7 — hire managers!", "🧪 Research technologies to unlock new planets!", "📦 Deliver planet orders for premium prices!", "⚡ Mind your energy: upgrade the Reactor!", "☄ Catch comets: production x2 boost!", "🪐 Unlock colonies: Cryos and Pyrite await!", "💥 Big Bang: +10% production per shard!"],
             langBtn: "RU"
         }
     };
     let t = i18n.ru;
     document.getElementById('loadingText').innerText = t.loading;
 
-    const questPool = [
-        { text: t => t.questClicks, type: 'click', baseTarget: 500 },
-        { text: t => t.questBuy, type: 'buy', baseTarget: 20 },
-        { text: t => t.questMeteors, type: 'meteor', baseTarget: 3 }
-    ];
-
-    function updateQuestTexts() {
-        if (game.quests.data.length > 0) {
-            game.quests.data.forEach(q => {
-                let poolItem = questPool.find(p => p.type === q.type);
-                if (poolItem) q.text = poolItem.text(t);
-            });
-        }
-    }
+    // Хелпер локализации: строки-объекты {ru, en}
+    function L(o) { return (typeof o === 'string') ? o : (o[lang] || o.ru); }
 
     function setLanguage(newLang) {
         lang = newLang;
         t = i18n[lang];
         document.getElementById('loadingText').innerText = t.loading;
-        updateQuestTexts();
-        initUpgrades();
     }
 
     // Определяем, запущена ли игра внутри ВКонтакте
@@ -199,7 +267,7 @@
         } catch (e) { return 'ru'; }
     }
 
-    // FIX #1: Гарантированный запуск игры даже при ошибках
+    // Гарантированный запуск игры даже при ошибках
     async function initPlatform() {
         // Этап 1: Инициализация VK Bridge (только внутри ВКонтакте)
         try {
@@ -220,23 +288,20 @@
         // Этап 2: Загрузка сейва с защитой от падений
         try {
             await loadGame();
-        } catch(e) {
+        } catch (e) {
             console.error("loadGame error, starting fresh:", e);
-            // Fallback: начинаем с чистого листа
-            initUpgrades();
-            generateNewQuests();
+            recalcStats();
+            genContract();
         }
-        
+
         // Этап 3: Гарантированный запуск игры (вне зависимости от ошибок выше)
-        updateQuestTexts();
         game.state = 'playing';
         game.lastTick = Date.now();
         loadingScreen.style.display = 'none';
 
-        // Интервал сохранения — запускаем ОДИН раз здесь, а не в loadGame()
-        // + оборачиваем в catch чтобы ошибки сохранения не падали
-        setInterval(() => { 
-            saveGame().catch(e => console.error("Auto-save error:", e)); 
+        // Интервал сохранения — запускаем ОДИН раз здесь
+        setInterval(() => {
+            saveGame().catch(e => console.error("Auto-save error:", e));
         }, 15000);
 
         requestAnimationFrame(gameLoop);
@@ -274,264 +339,823 @@
         osc.start(); osc.stop(audioCtx.currentTime + duration);
     }
     const sfx = {
-        click: () => playSound(400 + Math.random()*100, 0.05, 'square', 0.05),
-        buy: () => { playSound(800, 0.1, 'triangle', 0.1); setTimeout(()=>playSound(1200, 0.1, 'triangle', 0.1), 50); },
+        click: () => playSound(400 + Math.random() * 100, 0.05, 'square', 0.05),
+        buy: () => { playSound(800, 0.1, 'triangle', 0.1); setTimeout(() => playSound(1200, 0.1, 'triangle', 0.1), 50); },
         meteor: () => playSound(1000, 0.2, 'sawtooth', 0.15),
         roulette: () => playSound(600, 0.05, 'square', 0.08),
-        quest: () => { playSound(600, 0.2, 'sine', 0.2); setTimeout(()=>playSound(900, 0.2, 'sine', 0.2), 100); }
+        quest: () => { playSound(600, 0.2, 'sine', 0.2); setTimeout(() => playSound(900, 0.2, 'sine', 0.2), 100); },
+        sell: () => { playSound(900, 0.08, 'triangle', 0.12); setTimeout(() => playSound(1400, 0.12, 'sine', 0.12), 60); }
     };
 
     // ====================================================================================
-    // 3. GAME STATE & DATA
+    // 3. ДАННЫЕ ТАЙКУНА: бизнесы, улучшения, достижения
+    // ====================================================================================
+    const MILESTONES = [10, 25, 50, 100, 200, 300, 400, 500]; // каждое — скорость x2
+    const BASE_EGG_PRICE = 2;
+    const START_CRYSTALS = 250; // стартовый капитал империи: бизнесы покупаются сразу, без кликов
+    const PLANETS = ['Зу', 'Кринк', 'Веспер', 'Тау-Кита', 'Орион-7', 'Немезида', 'Аргус', 'Лира', 'Кассия', 'Драконис'];
+
+    // 6 бизнесов: производят яйца (нужен склад и продажа) или кристаллы напрямую.
+    // Производство идёт АВТОМАТИЧЕСКИ циклами — это ядро тайкуна, а не кликов.
+    // power — потребление энергии на единицу (энергосистема v3.1).
+    const BIZ_DEFS = [
+        { id: 'farm',   icon: '🐔', name: { ru: 'Космо-курятник', en: 'Space Coop' },       baseCost: 15,     costMult: 1.13, baseOut: 1,     cycle: 1.5, produces: 'eggs',     power: 0.05 },
+        { id: 'incub',  icon: '🥚', name: { ru: 'Инкубатор', en: 'Incubator' },             baseCost: 130,    costMult: 1.14, baseOut: 6,     cycle: 3,   produces: 'eggs',     power: 0.12 },
+        { id: 'down',   icon: '🧶', name: { ru: 'Фабрика Пуха', en: 'Down Factory' },       baseCost: 1600,   costMult: 1.15, baseOut: 8,     cycle: 4,   produces: 'crystals', power: 0.25 },
+        { id: 'lab',    icon: '🧬', name: { ru: 'Лаборатория Мутаций', en: 'Mutation Lab' }, baseCost: 18000,  costMult: 1.16, baseOut: 70,    cycle: 6,   produces: 'eggs',     power: 0.4 },
+        { id: 'port',   icon: '🚀', name: { ru: 'Космопорт', en: 'Spaceport' },             baseCost: 220000, costMult: 1.17, baseOut: 900,   cycle: 8,   produces: 'crystals', power: 0.9 },
+        { id: 'garden', icon: '🌌', name: { ru: 'Галактический Сад', en: 'Galactic Garden' }, baseCost: 3e6,  costMult: 1.18, baseOut: 12000, cycle: 12,  produces: 'eggs',     power: 2.2 }
+    ];
+
+    // Улучшения: одноразовые покупки (производство бизнесов, склад, цена, осмотр, менеджер)
+    const UPG_DEFS = [
+        { id: 'farm1',   biz: 'farm',   mult: 2,   cost: 600,    name: { ru: 'Сытный корм', en: 'Rich Feed' },          desc: { ru: 'Космо-курятник: производство x2', en: 'Space Coop: production x2' } },
+        { id: 'farm2',   biz: 'farm',   mult: 3,   cost: 15000,  name: { ru: 'Клоны-несушки', en: 'Clone Hens' },       desc: { ru: 'Космо-курятник: производство x3', en: 'Space Coop: production x3' } },
+        { id: 'inc1',    biz: 'incub',  mult: 2,   cost: 6000,   name: { ru: 'Тёплые лампы', en: 'Warm Lamps' },        desc: { ru: 'Инкубатор: производство x2', en: 'Incubator: production x2' } },
+        { id: 'inc2',    biz: 'incub',  mult: 3,   cost: 200000, name: { ru: 'Квантовый инкуб', en: 'Quantum Incubator' }, desc: { ru: 'Инкубатор: производство x3', en: 'Incubator: production x3' } },
+        { id: 'down1',   biz: 'down',   mult: 2,   cost: 30000,  name: { ru: 'Станки ЧПУ', en: 'CNC Machines' },        desc: { ru: 'Фабрика Пуха: производство x2', en: 'Down Factory: production x2' } },
+        { id: 'down2',   biz: 'down',   mult: 3,   cost: 1500000,name: { ru: 'Наноткацкие линии', en: 'Nanolooms' },    desc: { ru: 'Фабрика Пуха: производство x3', en: 'Down Factory: production x3' } },
+        { id: 'lab1',    biz: 'lab',    mult: 2,   cost: 300000, name: { ru: 'Мутагенез', en: 'Mutagenesis' },          desc: { ru: 'Лаборатория: производство x2', en: 'Mutation Lab: production x2' } },
+        { id: 'port1',   biz: 'port',   mult: 2,   cost: 4000000,name: { ru: 'Грузовые дроны', en: 'Cargo Drones' },    desc: { ru: 'Космопорт: производство x2', en: 'Spaceport: production x2' } },
+        { id: 'garden1', biz: 'garden', mult: 2,   cost: 5e7,    name: { ru: 'Семена звёзд', en: 'Star Seeds' },        desc: { ru: 'Галактический Сад: производство x2', en: 'Galactic Garden: production x2' } },
+        { id: 'stor1',   type: 'cap',   mult: 3,   cost: 4000,   name: { ru: 'Второй этаж склада', en: 'Storage Floor 2' }, desc: { ru: 'Склад: вместимость x3', en: 'Storage: capacity x3' } },
+        { id: 'stor2',   type: 'cap',   mult: 3,   cost: 60000,  name: { ru: 'Криохранилище', en: 'Cryo Storage' },     desc: { ru: 'Склад: вместимость x3', en: 'Storage: capacity x3' } },
+        { id: 'stor3',   type: 'cap',   mult: 3,   cost: 900000, name: { ru: 'Портальное кольцо', en: 'Portal Warehouse' }, desc: { ru: 'Склад: вместимость x3', en: 'Storage: capacity x3' } },
+        { id: 'price1',  type: 'price', mult: 1.3, cost: 8000,   name: { ru: 'Бренд «Космо-Яйцо»', en: 'CosmoEgg Brand' }, desc: { ru: 'Цена яиц +30%', en: 'Egg price +30%' } },
+        { id: 'price2',  type: 'price', mult: 1.4, cost: 200000, name: { ru: 'Галактический маркетинг', en: 'Galactic Marketing' }, desc: { ru: 'Цена яиц +40%', en: 'Egg price +40%' } },
+        { id: 'price3',  type: 'price', mult: 1.5, cost: 5e6,    name: { ru: 'Монополия', en: 'Monopoly' },             desc: { ru: 'Цена яиц +50%', en: 'Egg price +50%' } },
+        { id: 'shift1',  type: 'global', mult: 1.25, cost: 3000,   name: { ru: 'Круглосуточные смены', en: '24/7 Shifts' },  desc: { ru: 'Всё производство +25%', en: 'All production +25%' } },
+        { id: 'shift2',  type: 'global', mult: 1.35, cost: 150000, name: { ru: 'Ночные смены', en: 'Night Shifts' },         desc: { ru: 'Всё производство +35%', en: 'All production +35%' } },
+        { id: 'shift3',  type: 'global', mult: 1.5,  cost: 1e7,    name: { ru: 'Премии сотрудникам', en: 'Staff Bonuses' },  desc: { ru: 'Всё производство +50%', en: 'All production +50%' } },
+        { id: 'trader',  type: 'price',  mult: 1.25, cost: 50000,  name: { ru: '🤖 Робот-трейдер', en: '🤖 Trade Bot' },      desc: { ru: 'Цена продажи яиц +25%', en: 'Egg sell price +25%' } }
+    ];
+
+    // Менеджеры (v3.2): нанимаются за кристаллы, удваивают производство своего
+    // бизнеса во всех колониях. Империя работает сама — команда лишь масштабирует её.
+    const MGR_DEFS = [
+        { id: 'farm',   cost: 600,    icon: '👵', name: { ru: 'Агнес Хатч', en: 'Agnes Hutch' },      role: { ru: 'Космо-курятник: производство x2', en: 'Space Coop: production x2' } },
+        { id: 'incub',  cost: 7000,   icon: '👽', name: { ru: 'Проф. Зигг', en: 'Prof. Zigg' },       role: { ru: 'Инкубатор: производство x2', en: 'Incubator: production x2' } },
+        { id: 'down',   cost: 80000,  icon: '🦊', name: { ru: 'Мастер Лин', en: 'Master Lin' },       role: { ru: 'Фабрика Пуха: производство x2', en: 'Down Factory: production x2' } },
+        { id: 'lab',    cost: 9e5,    icon: '🧙', name: { ru: 'Проф. Ксон', en: 'Prof. Xon' },        role: { ru: 'Лаборатория: производство x2', en: 'Mutation Lab: production x2' } },
+        { id: 'port',   cost: 1.2e7,  icon: '👾', name: { ru: 'Кап. Риктер', en: 'Capt. Richter' },   role: { ru: 'Космопорт: производство x2', en: 'Spaceport: production x2' } },
+        { id: 'garden', cost: 1.5e8,  icon: '🐲', name: { ru: 'Садовник Ийон', en: 'Gardener Ion' },  role: { ru: 'Галактический Сад: производство x2', en: 'Galactic Garden: production x2' } }
+    ];
+
+    const ACHV_DEFS = [
+        { id: 'money',   test: () => game.totalCrystals >= 100000,   ru: 'Заработать 100K кристаллов', en: 'Earn 100K crystals' },
+        { id: 'portfolio', test: () => game.colonies[0].biz.every(b => b.level > 0), ru: 'Открыть все 6 бизнесов', en: 'Unlock all 6 businesses' },
+        { id: 'empire',  test: () => game.colonies.some(c => c.biz.some(b => b.level >= 100)), ru: '100 единиц в одном бизнесе', en: '100 units in one business' },
+        { id: 'storage', test: () => game.cache && game.cache.cap >= 4050, ru: 'Гигантский склад', en: 'Giant storage' },
+        { id: 'contracts', test: () => game.contractsDone >= 10,     ru: 'Выполнить 10 заказов', en: 'Complete 10 orders' },
+        { id: 'events',  test: () => game.eventsCaught >= 20,        ru: 'Поймать 20 событий', en: 'Catch 20 events' },
+        { id: 'sales',   test: () => game.eggsSold >= 5000,          ru: 'Продать 5 000 яиц', en: 'Sell 5,000 eggs' },
+        { id: 'manager', test: () => !!game.upgOwned.trader,         ru: 'Нанять Робота-трейдера', en: 'Hire the Trade Bot' },
+        { id: 'mgr1',    test: () => MGR_DEFS.some(m => game.mgrOwned[m.id]), ru: 'Нанять первого менеджера', en: 'Hire your first manager' },
+        { id: 'mgrAll',  test: () => MGR_DEFS.every(m => game.mgrOwned[m.id]), ru: 'Полный штат менеджеров', en: 'Full management team' },
+        { id: 'boom',    test: () => game.prestiges >= 1,            ru: 'Первый Большой Взрыв', en: 'First Big Bang' },
+        { id: 'shards',  test: () => game.shards >= 10,              ru: 'Собрать 10 осколков', en: 'Collect 10 shards' },
+        { id: 'techs5',  test: () => techCount() >= 5,               ru: 'Изучить 5 технологий', en: 'Research 5 technologies' },
+        { id: 'techs15', test: () => techCount() >= 15,              ru: 'Изучить 15 технологий', en: 'Research 15 technologies' },
+        { id: 'cryos',   test: () => game.colonies[1].unlocked,      ru: 'Основать колонию Криос', en: 'Found the Cryos colony' },
+        { id: 'pyrit',   test: () => game.colonies[2].unlocked,      ru: 'Основать колонию Пирит', en: 'Found the Pyrite colony' },
+        { id: 'goals10', test: () => game.missionIdx >= 10,          ru: 'Выполнить 10 целей империи', en: 'Complete 10 empire goals' },
+        { id: 'goals25', test: () => game.missionIdx >= 25,          ru: 'Выполнить 25 целей империи', en: 'Complete 25 empire goals' },
+        { id: 'reactor5', test: () => game.reactor >= 5,             ru: 'Реактор 5 уровня', en: 'Reactor level 5' },
+        { id: 'science1k', test: () => game.science >= 1000,         ru: 'Накопить 1000 науки', en: 'Bank 1,000 science' }
+    ];
+
+    // ====================================================================================
+    // 3a. ДАННЫЕ v3.1: колонии (планеты), технологии, цели империи
+    // ====================================================================================
+    // 3 планеты-колонии: у каждой свой набор бизнесов (те же 6 типов, но свои
+    // уровни, цены и выработка). Разблокировка: кристаллы + технология.
+    const COLONY_DEFS = [
+        { id: 'terra', icon: '🌍', name: { ru: 'Терра-9', en: 'Terra-9' },       costMult: 1,    outMult: 1,    unlockCrys: 0,      reqTech: null },
+        { id: 'cryos', icon: '❄️', name: { ru: 'Криос', en: 'Cryos' },           costMult: 45,   outMult: 70,   unlockCrys: 300000, reqTech: 't_terra' },
+        { id: 'pyrit', icon: '🌋', name: { ru: 'Пирит', en: 'Pyrite' },          costMult: 1200, outMult: 2500, unlockCrys: 2.5e7,  reqTech: 't_starflight' }
+    ];
+
+    // Дерево технологий: 4 ветки по 6 исследований. Изучение занимает время
+    // (одно за раз), можно ускорить за кристаллы. Эффекты применяет recalcStats().
+    const BRANCH_META = {
+        prod:  { name: { ru: 'Производство', en: 'Production' }, color: '#00e5ff' },
+        econ:  { name: { ru: 'Экономика', en: 'Economy' },       color: '#FFD700' },
+        logi:  { name: { ru: 'Логистика', en: 'Logistics' },     color: '#00FF99' },
+        space: { name: { ru: 'Космос', en: 'Space' },            color: '#b388ff' }
+    };
+    const TECH_DEFS = [
+        // — Производство —
+        { id: 't_feed1',   br: 'prod', cost: 10,   dur: 30,  name: { ru: 'Корма нового поколения', en: 'Next-Gen Feed' },       desc: { ru: 'Яйца: производство +25%', en: 'Eggs: output +25%' } },
+        { id: 't_feed2',   br: 'prod', cost: 60,   dur: 60,  req: 't_feed1',   name: { ru: 'Генная селекция', en: 'Gene Selection' },          desc: { ru: 'Яйца: производство x1.5', en: 'Eggs: output x1.5' } },
+        { id: 't_feed3',   br: 'prod', cost: 220,  dur: 120, req: 't_feed2',   name: { ru: 'Клонирование несушек', en: 'Hen Cloning' },        desc: { ru: 'Яйца: производство x2', en: 'Eggs: output x2' } },
+        { id: 't_auto1',   br: 'prod', cost: 40,   dur: 60,  name: { ru: 'Автоматизация линий', en: 'Line Automation' },       desc: { ru: 'Кристаллы: добыча +50%', en: 'Crystals: output +50%' } },
+        { id: 't_auto2',   br: 'prod', cost: 300,  dur: 180, req: 't_auto1',   name: { ru: 'Робо-заводы', en: 'Robo-Factories' },              desc: { ru: 'Кристаллы: добыча x2', en: 'Crystals: output x2' } },
+        { id: 't_ai',      br: 'prod', cost: 1500, dur: 360, req: 't_auto2',   name: { ru: 'ИИ-управление', en: 'AI Overseer' },               desc: { ru: 'Всё производство +50%', en: 'All production +50%' } },
+        // — Экономика —
+        { id: 't_price1',  br: 'econ', cost: 15,   dur: 30,  name: { ru: 'Премиум-упаковка', en: 'Premium Packaging' },        desc: { ru: 'Цена яиц +20%', en: 'Egg price +20%' } },
+        { id: 't_price2',  br: 'econ', cost: 90,   dur: 90,  req: 't_price1',  name: { ru: 'Космический бренд', en: 'Space Brand' },           desc: { ru: 'Цена яиц +30%', en: 'Egg price +30%' } },
+        { id: 't_price3',  br: 'econ', cost: 450,  dur: 240, req: 't_price2',  name: { ru: 'Галактическая монополия', en: 'Galactic Monopoly' }, desc: { ru: 'Цена яиц +50%', en: 'Egg price +50%' } },
+        { id: 't_sci1',    br: 'econ', cost: 25,   dur: 45,  name: { ru: 'Открытые публикации', en: 'Open Publishing' },       desc: { ru: 'Наука +50%', en: 'Science +50%' } },
+        { id: 't_sci2',    br: 'econ', cost: 180,  dur: 150, req: 't_sci1',    name: { ru: 'Научный совет', en: 'Science Council' },           desc: { ru: 'Наука x2', en: 'Science x2' } },
+        { id: 't_market',  br: 'econ', cost: 120,  dur: 120, req: 't_sci1',    name: { ru: 'Алготрейдинг', en: 'Algo Trading' },               desc: { ru: 'Рыночные события чаще и дольше', en: 'Market events more frequent and longer' } },
+        // — Логистика —
+        { id: 't_log1',    br: 'logi', cost: 12,   dur: 30,  name: { ru: 'Логистика дронов', en: 'Drone Logistics' },          desc: { ru: 'Склад +50%', en: 'Storage +50%' } },
+        { id: 't_log2',    br: 'logi', cost: 70,   dur: 90,  req: 't_log1',    name: { ru: 'Портальная доставка', en: 'Portal Delivery' },     desc: { ru: 'Склад x2', en: 'Storage x2' } },
+        { id: 't_log3',    br: 'logi', cost: 350,  dur: 240, req: 't_log2',    name: { ru: 'Квантовый склад', en: 'Quantum Storage' },         desc: { ru: 'Склад x3', en: 'Storage x3' } },
+        { id: 't_sell1',   br: 'logi', cost: 50,   dur: 60,  name: { ru: 'Оптовые поставки', en: 'Wholesale Deals' },           desc: { ru: 'Цена продажи яиц +15%', en: 'Egg sell price +15%' } },
+        { id: 't_sell2',   br: 'logi', cost: 200,  dur: 180, req: 't_sell1',   name: { ru: 'Биржевой бот', en: 'Market Bot' },                 desc: { ru: 'Авто-продажа ждёт цену выше средней', en: 'Auto-sell waits for above-average price' } },
+        { id: 't_order',   br: 'logi', cost: 90,   dur: 120, name: { ru: 'Дипломатия', en: 'Diplomacy' },                      desc: { ru: 'Награда за заказы +50%', en: 'Order rewards +50%' } },
+        // — Космос —
+        { id: 't_energy1', br: 'space', cost: 35,   dur: 60,  name: { ru: 'Реактор II', en: 'Reactor II' },                     desc: { ru: 'Энергия +300', en: 'Energy +300' } },
+        { id: 't_energy2', br: 'space', cost: 400,  dur: 240, req: 't_energy1', name: { ru: 'Термоядерный синтез', en: 'Fusion Power' },        desc: { ru: 'Энергия +900', en: 'Energy +900' } },
+        { id: 't_terra',   br: 'space', cost: 100,  dur: 120, name: { ru: 'Терраформирование', en: 'Terraforming' },            desc: { ru: 'Открывает колонию Криос', en: 'Unlocks the Cryos colony' } },
+        { id: 't_starflight', br: 'space', cost: 1200, dur: 360, req: 't_terra', name: { ru: 'Звёздные корабли', en: 'Starships' },           desc: { ru: 'Открывает колонию Пирит', en: 'Unlocks the Pyrite colony' } },
+        { id: 't_shift',   br: 'space', cost: 30,   dur: 45,  name: { ru: 'Автоматика 24/7', en: '24/7 Automation' },           desc: { ru: 'Всё производство +30%', en: 'All production +30%' } },
+        { id: 't_luck',    br: 'space', cost: 250,  dur: 180, name: { ru: 'Сканер удачи', en: 'Luck Scanner' },                 desc: { ru: 'Кометы и НЛО появляются чаще', en: 'Comets and UFOs appear more often' } }
+    ];
+
+    // Цели империи: последовательная цепочка задач, ведущая игрока по всем системам.
+    // prog() возвращает [текущее, целевое] для прогресс-бара; награда — по формуле.
+    const MISSION_DEFS = [
+        { d: { ru: 'Произведи 50 яиц', en: 'Produce 50 eggs' },                                prog: () => [game.eggsProduced, 50] },
+        { d: { ru: 'Купи 5 единиц Космо-курятника', en: 'Buy 5 Space Coop units' },           prog: () => [game.colonies[0].biz[0].level, 5] },
+        { d: { ru: 'Заработай 1K кристаллов', en: 'Earn 1K crystals' },                        prog: () => [game.totalCrystals, 1000] },
+        { d: { ru: 'Продай 100 яиц', en: 'Sell 100 eggs' },                                    prog: () => [game.eggsSold, 100] },
+        { d: { ru: 'Открой Инкубатор', en: 'Unlock the Incubator' },                           prog: () => [game.colonies[0].biz[1].level > 0 ? 1 : 0, 1] },
+        { d: { ru: 'Купи любой апгрейд', en: 'Buy any upgrade' },                              prog: () => [Object.keys(game.upgOwned).length, 1] },
+        { d: { ru: 'Расширь склад до 200', en: 'Expand storage to 200' },                      prog: () => [game.cache ? game.cache.cap : 0, 200] },
+        { d: { ru: 'Выполни заказ планеты', en: 'Deliver a planet order' },                    prog: () => [game.contractsDone, 1] },
+        { d: { ru: 'Изучи первую технологию', en: 'Research your first technology' },          prog: () => [techCount(), 1] },
+        { d: { ru: 'Заработай 25K кристаллов', en: 'Earn 25K crystals' },                      prog: () => [game.totalCrystals, 25000] },
+        { d: { ru: '50 единиц Космо-курятника', en: '50 Space Coop units' },                   prog: () => [game.colonies[0].biz[0].level, 50] },
+        { d: { ru: 'Поймай событие (комета/НЛО)', en: 'Catch an event (comet/UFO)' },          prog: () => [game.eventsCaught, 1] },
+        { d: { ru: 'Изучи 3 технологии', en: 'Research 3 technologies' },                      prog: () => [techCount(), 3] },
+        { d: { ru: 'Построй Реактор 2 уровня', en: 'Build a level 2 Reactor' },                prog: () => [game.reactor, 2] },
+        { d: { ru: 'Заработай 100K кристаллов', en: 'Earn 100K crystals' },                    prog: () => [game.totalCrystals, 100000] },
+        { d: { ru: 'Открой Фабрику Пуха', en: 'Unlock the Down Factory' },                     prog: () => [game.colonies[0].biz[2].level > 0 ? 1 : 0, 1] },
+        { d: { ru: 'Продай 2 000 яиц', en: 'Sell 2,000 eggs' },                                prog: () => [game.eggsSold, 2000] },
+        { d: { ru: 'Выполни 5 заказов', en: 'Deliver 5 orders' },                              prog: () => [game.contractsDone, 5] },
+        { d: { ru: 'Изучи 5 технологий', en: 'Research 5 technologies' },                      prog: () => [techCount(), 5] },
+        { d: { ru: 'Основай колонию Криос', en: 'Found the Cryos colony' },                    prog: () => [game.colonies[1].unlocked ? 1 : 0, 1] },
+        { d: { ru: '150 единиц Космо-курятника', en: '150 Space Coop units' },                 prog: () => [game.colonies[0].biz[0].level, 150] },
+        { d: { ru: 'Заработай 1M кристаллов', en: 'Earn 1M crystals' },                        prog: () => [game.totalCrystals, 1e6] },
+        { d: { ru: 'Изучи 10 технологий', en: 'Research 10 technologies' },                    prog: () => [techCount(), 10] },
+        { d: { ru: 'Построй Реактор 5 уровня', en: 'Build a level 5 Reactor' },                prog: () => [game.reactor, 5] },
+        { d: { ru: 'Выполни 10 заказов', en: 'Deliver 10 orders' },                            prog: () => [game.contractsDone, 10] },
+        { d: { ru: 'Крутани рулетку', en: 'Spin the lottery wheel' },                          prog: () => [game.spinsDone, 1] },
+        { d: { ru: 'Заработай 10M кристаллов', en: 'Earn 10M crystals' },                      prog: () => [game.totalCrystals, 1e7] },
+        { d: { ru: 'Открой Космопорт', en: 'Unlock the Spaceport' },                           prog: () => [game.colonies[0].biz[4].level > 0 ? 1 : 0, 1] },
+        { d: { ru: 'Основай колонию Пирит', en: 'Found the Pyrite colony' },                   prog: () => [game.colonies[2].unlocked ? 1 : 0, 1] },
+        { d: { ru: 'Выполни 20 заказов', en: 'Deliver 20 orders' },                            prog: () => [game.contractsDone, 20] },
+        { d: { ru: 'Заработай 100M кристаллов', en: 'Earn 100M crystals' },                    prog: () => [game.totalCrystals, 1e8] },
+        { d: { ru: 'Соверши Большой Взрыв', en: 'Trigger the Big Bang' },                      prog: () => [game.prestiges, 1] },
+        { d: { ru: 'Изучи 15 технологий', en: 'Research 15 technologies' },                    prog: () => [techCount(), 15] },
+        { d: { ru: 'Собери 100 осколков', en: 'Collect 100 shards' },                          prog: () => [game.shards, 100] },
+        { d: { ru: 'Изучи все 24 технологии', en: 'Research all 24 technologies' },            prog: () => [techCount(), 24] },
+        { d: { ru: 'Выполни 40 заказов', en: 'Deliver 40 orders' },                            prog: () => [game.contractsDone, 40] }
+    ];
+    function missionReward(i) {
+        return { c: Math.ceil(80 * Math.pow(1.75, i * 0.5)), s: 8 + i * 4 };
+    }
+    function techCount() { return Object.keys(game.tech.owned).length; }
+
+    // ====================================================================================
+    // 4. СОСТОЯНИЕ ИГРЫ
     // ====================================================================================
     let game = {
         state: 'loading',
         isMobile: false, uiPanelOpen: false, panelAnim: 0,
-        dust: 0, totalDust: 0,
-        tapPower: 1, dps: 0, multiplier: 1,
-        boostTime: 0, meteorBoostTime: 0,
-        totalClicks: 0, meteorsCaught: 0,
-        startTime: Date.now(), lastSave: Date.now(),
-        currentTab: 'shop', buyAmount: 1, shopScroll: 0, shopScrollTarget: 0,
-        eggPulse: 1, eggAngle: 0, cameraShake: 0, shockwaves: [],
-        upgrades: [],
-        particles: [], floatTexts: [], meteors: [], stars: [],
+        // Экономика
+        crystals: START_CRYSTALS, runCrystals: 0, totalCrystals: 0,
+        eggsStored: 0, eggsProduced: 0, eggsSold: 0,
+        // Наука и технологии (v3.1)
+        science: 0,
+        tech: { owned: {}, active: null },   // active: { id, left }
+        // Колонии на 3 планетах: у каждой свои экземпляры бизнесов (v3.1)
+        colonies: COLONY_DEFS.map((p, pi) => ({
+            def: p, unlocked: pi === 0,
+            biz: BIZ_DEFS.map(d => ({ def: d, pi: pi, level: 0, t: 0 }))
+        })),
+        activePlanet: 0,
+        reactor: 0,
+        // Цели империи (v3.1)
+        missionIdx: 0, spinsDone: 0,
+        upgOwned: {},
+        mgrOwned: {},   // менеджеры бизнесов (v3.2)
+        // Биржи: mult плавно гуляет 0.6…1.9, события x2.5/x0.5 на 25с
+        market: { mult: 1, target: 1, t: 20, eventMult: 1, eventT: 0, eventTimer: 80 },
+        // Заказы планет
+        contract: null, contractCooldown: 5, contractsDone: 0,
+        // Бусты: prod — ускорение x2 (кометы/НЛО), adBoost — рекламный x2
+        boosts: { prod: 0, adBoost: 0 },
+        // События на экране
+        eventTimer: 26, activeEvent: null, lastEventType: '', rainLeft: 0, rainT: 0,
+        meteors: [], eventsCaught: 0,
+        // Престиж
+        shards: 0, prestiges: 0,
+        // Статистика
+        stats: { taps: 0 },
+        achv: {}, toasts: [], particles: [], floatTexts: [], shockwaves: [],
+        stars: [], eggPulse: 1, eggAngle: 0, cameraShake: 0,
+        currentTab: 'biz', buyAmount: 1, listScroll: 0, listScrollTarget: 0,
         modal: null, rouletteAngle: 0, rouletteSpinning: false, rouletteResult: null, rouletteStopTime: null,
-        quests: { completedCount: 0, data: [] },
         freeSpins: 1, lastSpinReset: 0,
-        uiElements: [], 
-        running: false,
-        shopTouchActive: false
+        startTime: Date.now(), lastSave: Date.now(), lastTick: Date.now(),
+        autoSellFlash: 0, cache: null, cacheTick: 0,
+        uiElements: [], shopTouchActive: false, storageFull: false
     };
 
-    function generateNewQuests() {
-        let scale = 1 + Math.floor(game.quests.completedCount / 3) * 0.5;
-        game.quests.data = [];
-        let pool = [...questPool].sort(() => Math.random() - 0.5);
-        for(let i=0; i<3; i++) {
-            let q = pool[i];
-            game.quests.data.push({
-                id: q.type + "_" + Math.random(),
-                text: q.text(t),
-                target: Math.ceil(q.baseTarget * scale),
-                current: 0,
-                type: q.type,
-                done: false
-            });
-        }
+    function pushToast(text) {
+        game.toasts.push({ text: text, life: 4 });
+        if (game.toasts.length > 4) game.toasts.shift();
     }
-
-    function initUpgrades() {
-        let baseUpgrades = [
-            { id: 'tap1', name: lang === 'ru' ? "Энергия I" : "Energy I", desc: lang === 'ru' ? "+1 к клику" : "+1 per click", baseCost: 15, costMult: 1.15, level: 0, type: 'tap', value: 1 },
-            { id: 'comet', name: lang === 'ru' ? "Комета" : "Comet", desc: lang === 'ru' ? "+1 в сек" : "+1 per sec", baseCost: 100, costMult: 1.15, level: 0, type: 'dps', value: 1 },
-            { id: 'tap2', name: lang === 'ru' ? "Энергия II" : "Energy II", desc: lang === 'ru' ? "+5 к клику" : "+5 per click", baseCost: 500, costMult: 1.15, level: 0, type: 'tap', value: 5 },
-            { id: 'nebula', name: lang === 'ru' ? "Туманность" : "Nebula", desc: lang === 'ru' ? "+10 в сек" : "+10 per sec", baseCost: 1100, costMult: 1.15, level: 0, type: 'dps', value: 10 },
-            { id: 'tap3', name: lang === 'ru' ? "Кулак" : "Fist", desc: lang === 'ru' ? "+50 к клику" : "+50 per click", baseCost: 5000, costMult: 1.15, level: 0, type: 'tap', value: 50 },
-            { id: 'blackhole', name: lang === 'ru' ? "Черная дыра" : "Black Hole", desc: lang === 'ru' ? "+100 в сек" : "+100 per sec", baseCost: 12000, costMult: 1.15, level: 0, type: 'dps', value: 100 },
-            { id: 'tap4', name: lang === 'ru' ? "Сверхнова" : "Supernova", desc: lang === 'ru' ? "+500 к клику" : "+500 per click", baseCost: 50000, costMult: 1.15, level: 0, type: 'tap', value: 500 },
-            { id: 'quasar', name: lang === 'ru' ? "Квазар" : "Quasar", desc: lang === 'ru' ? "+1K в сек" : "+1K per sec", baseCost: 100000, costMult: 1.15, level: 0, type: 'dps', value: 1000 },
-            { id: 'mult1', name: lang === 'ru' ? "Аура" : "Aura", desc: lang === 'ru' ? "x2 ко всему" : "x2 to all", baseCost: 200000, costMult: 10, level: 0, type: 'mult', value: 2 },
-            { id: 'galaxy', name: lang === 'ru' ? "Галактика" : "Galaxy", desc: lang === 'ru' ? "+10K в сек" : "+10K per sec", baseCost: 500000, costMult: 1.15, level: 0, type: 'dps', value: 10000 },
-            { id: 'pulsar', name: lang === 'ru' ? "Пульсар" : "Pulsar", desc: lang === 'ru' ? "+50K в сек" : "+50K per sec", baseCost: 5000000, costMult: 1.16, level: 0, type: 'dps', value: 50000 },
-            { id: 'tap5', name: lang === 'ru' ? "Космо-кулак" : "Cosmo-Fist", desc: lang === 'ru' ? "+5K к клику" : "+5K per click", baseCost: 10000000, costMult: 1.16, level: 0, type: 'tap', value: 5000 },
-            { id: 'mult2', name: lang === 'ru' ? "Резонанс" : "Resonance", desc: lang === 'ru' ? "x3 ко всему" : "x3 to all", baseCost: 50000000, costMult: 15, level: 0, type: 'mult', value: 3 },
-            { id: 'cluster', name: lang === 'ru' ? "Скопление" : "Cluster", desc: lang === 'ru' ? "+500K в сек" : "+500K per sec", baseCost: 100000000, costMult: 1.17, level: 0, type: 'dps', value: 500000 },
-            { id: 'singularity', name: lang === 'ru' ? "Сингулярность" : "Singularity", desc: lang === 'ru' ? "x5 ко всему" : "x5 to all", baseCost: 1000000000, costMult: 20, level: 0, type: 'mult', value: 5 },
-            { id: 'multiverse', name: lang === 'ru' ? "Мультивселенная" : "Multiverse", desc: lang === 'ru' ? "+10M в сек" : "+10M per sec", baseCost: 10000000000, costMult: 1.18, level: 0, type: 'dps', value: 10000000 }
-        ];
-
-        if (game.upgrades.length === 0) {
-            game.upgrades = baseUpgrades;
-        } else {
-            game.upgrades.forEach((u, i) => {
-                if (baseUpgrades[i]) {
-                    u.name = baseUpgrades[i].name;
-                    u.desc = baseUpgrades[i].desc;
-                }
-            });
-        }
+    function addFloat(x, y, text, color) {
+        game.floatTexts.push({ x, y, text, life: 1.4, vy: -2.5, color: color || "#FFFFFF" });
     }
 
     // ====================================================================================
-    // 4. MATHEMATICS & LOGIC
+    // 5. ЭКОНОМИКА И МАТЕМАТИКА
     // ====================================================================================
-    function getUpgradeCost(upg, amount = 1) {
-        return Math.ceil(upg.baseCost * Math.pow(upg.costMult, upg.level) * (Math.pow(upg.costMult, amount) - 1) / (upg.costMult - 1));
+    function bizSpeed(b) {
+        let sp = 1;
+        MILESTONES.forEach(m => { if (b.level >= m) sp *= 2; });
+        return sp;
+    }
+    function prestigeMult() { return 1 + game.shards * 0.1; }
+    function prodBoostMult() {
+        return (game.boosts.prod > 0 ? 2 : 1) * (game.boosts.adBoost > 0 ? 2 : 1);
     }
 
-    function getMaxBuy(upg) {
-        if (upg.type === 'mult') return 1;
-        let base = upg.baseCost * Math.pow(upg.costMult, upg.level);
-        let affordable = Math.floor(Math.log(game.dust * (upg.costMult - 1) / base + 1) / Math.log(upg.costMult));
+    // Пересчёт всех показателей (кэш) — вызывается после покупок и раз в 0.25с.
+    // v3.1: добавлены наука, энергосистема (реактор/потребление/эффективность),
+    // эффекты технологий и мультипликаторы планет-колоний.
+    function recalcStats() {
+        let cap = 150, price = 1, globalMult = 1;
+        let bizMult = {};
+        BIZ_DEFS.forEach(d => bizMult[d.id] = 1);
+        UPG_DEFS.forEach(u => {
+            if (!game.upgOwned[u.id]) return;
+            if (u.type === 'cap') cap *= u.mult;
+            else if (u.type === 'price') price *= u.mult;
+            else if (u.type === 'global') globalMult *= u.mult;
+            else if (u.biz) bizMult[u.biz] *= u.mult;
+        });
+        // Менеджеры (v3.2): нанятый управляющий удваивает производство своего
+        // бизнеса во всех колониях
+        MGR_DEFS.forEach(m => { if (game.mgrOwned[m.id]) bizMult[m.id] *= 2; });
+        // Эффекты изученных технологий
+        let T = game.tech.owned;
+        let eggTech = 1, crysTech = 1, sciMult = 1, orderBonus = 1, aiMult = 1;
+        if (T.t_feed1) eggTech *= 1.25;
+        if (T.t_feed2) eggTech *= 1.5;
+        if (T.t_feed3) eggTech *= 2;
+        if (T.t_auto1) crysTech *= 1.5;
+        if (T.t_auto2) crysTech *= 2;
+        if (T.t_ai) aiMult = 1.5;
+        if (T.t_price1) price *= 1.2;
+        if (T.t_price2) price *= 1.3;
+        if (T.t_price3) price *= 1.5;
+        if (T.t_sci1) sciMult *= 1.5;
+        if (T.t_sci2) sciMult *= 2;
+        if (T.t_log1) cap *= 1.5;
+        if (T.t_log2) cap *= 2;
+        if (T.t_log3) cap *= 3;
+        if (T.t_order) orderBonus = 1.5;
+        if (T.t_shift) globalMult *= 1.3;
+        if (T.t_sell1) price *= 1.15; // Оптовые поставки: цена продажи +15%
+        // Энергосистема: мощность реактора vs потребление всех колоний
+        let energyCap = 200 + game.reactor * 150 + (T.t_energy1 ? 300 : 0) + (T.t_energy2 ? 900 : 0);
+        let consumption = 0;
+        game.colonies.forEach(c => {
+            if (!c.unlocked) return;
+            c.biz.forEach(b => { if (b.level > 0) consumption += b.level * b.def.power; });
+        });
+        let eff = consumption > 0 ? Math.min(1, energyCap / consumption) : 1;
+        // Производство по всем открытым колониям (с планетарными множителями)
+        let pMult = prestigeMult(), boost = prodBoostMult();
+        let prodEgg = eggTech * aiMult * globalMult, prodCrys = crysTech * aiMult * globalMult;
+        let eggPerSec = 0, crysPerSec = 0, labUnits = 0;
+        game.colonies.forEach(c => {
+            if (!c.unlocked) return;
+            c.biz.forEach(b => {
+                if (b.level <= 0) return;
+                if (b.def.id === 'lab') labUnits += b.level;
+                let out = b.def.baseOut * c.def.outMult * b.level * bizMult[b.def.id] * pMult * boost * eff;
+                out *= (b.def.produces === 'eggs') ? prodEgg : prodCrys;
+                let perSec = out * bizSpeed(b) / b.def.cycle;
+                if (b.def.produces === 'eggs') eggPerSec += perSec; else crysPerSec += perSec;
+            });
+        });
+        // Наука: Лаборатории по всем колониям (0.5/с за единицу) + множители
+        let sciPerSec = labUnits * 0.5 * pMult * sciMult * boost * eff;
+        let stablePrice = BASE_EGG_PRICE * price; // без рыночных колебаний (для стаб. показателей)
+        let marketPrice = stablePrice * game.market.mult * game.market.eventMult;
+        game.cache = {
+            cap, priceMult: price, bizMult, prestige: pMult, boost,
+            eggPerSec, crysPerSec,
+            incomePerSec: crysPerSec + eggPerSec * marketPrice,
+            eggPrice: marketPrice,
+            // v3.1
+            prodEgg, prodCrys, eff, energyCap, consumption, sciPerSec,
+            sciMult, orderBonus, sellBot: !!T.t_sell2
+        };
+    }
+
+    function getBizCost(b, amount = 1) {
+        let base = b.def.baseCost * COLONY_DEFS[b.pi].costMult;
+        return Math.ceil(base * Math.pow(b.def.costMult, b.level) *
+            (Math.pow(b.def.costMult, amount) - 1) / (b.def.costMult - 1));
+    }
+    function getMaxAffordable(b) {
+        let base = b.def.baseCost * COLONY_DEFS[b.pi].costMult * Math.pow(b.def.costMult, b.level);
+        let affordable = Math.floor(Math.log(game.crystals * (b.def.costMult - 1) / base + 1) / Math.log(b.def.costMult));
         return Math.max(0, affordable);
     }
-
-    function recalcStats() {
-        let tap = 1, dps = 0, mult = 1;
-        game.upgrades.forEach(u => {
-            if (u.type === 'tap') tap += u.value * u.level;
-            if (u.type === 'dps') dps += u.value * u.level;
-            if (u.type === 'mult') mult *= Math.pow(u.value, u.level);
-        });
-        game.tapPower = tap;
-        game.dps = dps;
-        game.multiplier = mult;
+    function bizVisible(i) {
+        let col = game.colonies[game.activePlanet];
+        if (i === 0) return true;
+        return col.biz[i - 1].level > 0 || game.totalCrystals >= col.biz[i].def.baseCost * COLONY_DEFS[col.biz[i].pi].costMult * 0.3;
     }
 
-    function buyUpgrade(index) {
-        let upg = game.upgrades[index];
-        let buyAmt = (upg.type === 'mult') ? 1 : (game.buyAmount === "Max" ? getMaxBuy(upg) : game.buyAmount);
-        if (!buyAmt || buyAmt <= 0) return;
-        
-        let cost = getUpgradeCost(upg, buyAmt);
-        if (game.dust >= cost) {
-            game.dust -= cost;
-            upg.level += buyAmt;
-            recalcStats();
-            sfx.buy();
-            let q = game.quests.data.find(x => x.type === 'buy');
-            if (q && !q.done) { 
-                q.current += buyAmt; 
-                if (q.current >= q.target) q.done = true; 
-            }
-            saveGame().catch(e => console.error("Save error:", e));
-        }
+    function curColony() { return game.colonies[game.activePlanet]; }
+
+    function buyBusiness(i, amtRaw) {
+        let b = curColony().biz[i];
+        if (!b) return;
+        let amt = amtRaw === 'Max' ? Math.max(1, getMaxAffordable(b)) : amtRaw;
+        if (!amt || amt <= 0) return;
+        let cost = getBizCost(b, amt);
+        if (game.crystals < cost) return;
+        game.crystals -= cost;
+        b.level += amt;
+        sfx.buy();
+        recalcStats();
+        saveGame().catch(e => console.error("Save error:", e));
     }
 
-    function clickEgg(x, y) {
-        let gain = game.tapPower * game.multiplier * (game.boostTime > 0 ? 2 : 1) * (game.meteorBoostTime > 0 ? 5 : 1);
-        game.dust += gain; game.totalDust += gain; game.totalClicks++;
-        game.eggPulse = 0.85;
-        
-        game.shockwaves.push({ x, y, radius: 0, maxRadius: 100, life: 1 });
-        
-        for(let i=0; i<8; i++) {
-            let angle = Math.random() * Math.PI * 2;
-            let speed = Math.random() * 8 + 2;
-            game.particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed - 2, life: 1, size: 2+Math.random()*4, color: `hsl(${260+Math.random()*60}, 100%, 70%)` });
-        }
-        game.floatTexts.push({ x: x + (Math.random()-0.5)*20, y: y - 20, text: "+"+formatNum(gain), life: 1, vy: -3, rot: (Math.random()-0.5)*0.2 });
-        sfx.click();
-        if (gain > 10000) game.cameraShake = 3;
-        
-        let q = game.quests.data.find(x => x.type === 'click');
-        if (q && !q.done) { q.current++; if (q.current >= q.target) q.done = true; }
+    function buyUpgrade(id) {
+        let u = UPG_DEFS.find(x => x.id === id);
+        if (!u || game.upgOwned[id] || game.crystals < u.cost) return;
+        game.crystals -= u.cost;
+        game.runCrystals -= 0; // покупка не считается заработком
+        game.upgOwned[id] = true;
+        pushToast('✅ ' + L(u.name));
+        sfx.buy();
+        recalcStats();
+        saveGame().catch(e => console.error("Save error:", e));
     }
 
-    function claimQuests() {
-        if (!game.quests.data.every(q => q.done)) return;
-        
-        game.quests.completedCount++;
-        let gain = Math.max(1000, game.dps * game.multiplier * 3600);
-        game.dust += gain;
-        game.totalDust += gain;
-        game.floatTexts.push({ x: W/2, y: H/2, text: t.rewardQuests + formatNum(gain), life: 3, vy: -2, color: "#00FF99" });
+    // ====================================================================================
+    // 5a. v3.1: НАУКА, ТЕХНОЛОГИИ, РЕАКТОР, КОЛОНИИ, ЦЕЛИ ИМПЕРИИ
+    // ====================================================================================
+    // Исследование: одно за раз, идёт реальным временем (таймер тикает в update()
+    // и продолжает идти офлайн). Можно ускорить за кристаллы.
+    function research(id) {
+        let def = TECH_DEFS.find(x => x.id === id);
+        if (!def || game.tech.owned[id] || game.tech.active) return false;
+        if (game.science < def.cost) return false;
+        if (def.req && !game.tech.owned[def.req]) return false;
+        game.science -= def.cost;
+        game.tech.active = { id: id, left: def.dur };
+        sfx.buy();
+        saveGame().catch(e => console.error("Save error:", e));
+        return true;
+    }
+    function finishResearch() {
+        if (!game.tech.active) return;
+        let id = game.tech.active.id;
+        let def = TECH_DEFS.find(x => x.id === id);
+        game.tech.owned[id] = true;
+        game.tech.active = null;
+        pushToast(t.researchDone + (def ? L(def.name) : id));
         sfx.quest();
-        
-        generateNewQuests();
+        recalcStats();
+        saveGame().catch(e => console.error("Save error:", e));
+    }
+    function rushCost() {
+        if (!game.tech.active || !game.cache) return 0;
+        return Math.max(30, Math.ceil(game.tech.active.left * (5 + game.cache.incomePerSec * 0.5)));
+    }
+    function rushResearch() {
+        if (!game.tech.active) return;
+        let cost = rushCost();
+        if (game.crystals < cost) return;
+        game.crystals -= cost;
+        game.tech.active.left = 0;
+        finishResearch();
+    }
+    // Реактор: +150 энергии за уровень, цена растёт геометрически
+    function reactorCost() { return Math.ceil(400 * Math.pow(2.1, game.reactor)); }
+    function buyReactor() {
+        let cost = reactorCost();
+        if (game.crystals < cost) return false;
+        game.crystals -= cost;
+        game.reactor++;
+        pushToast('⚡ ' + (lang === 'ru' ? 'Реактор уровня ' : 'Reactor level ') + game.reactor);
+        sfx.buy();
+        recalcStats();
+        saveGame().catch(e => console.error("Save error:", e));
+        return true;
+    }
+    // Колонии: нужна технология + кристаллы
+    function colonyUnlockable(pi) {
+        let d = COLONY_DEFS[pi];
+        return !game.colonies[pi].unlocked &&
+            (!d.reqTech || !!game.tech.owned[d.reqTech]) &&
+            game.crystals >= d.unlockCrys;
+    }
+    function unlockColony(pi) {
+        if (!colonyUnlockable(pi)) return false;
+        let d = COLONY_DEFS[pi];
+        game.crystals -= d.unlockCrys;
+        game.colonies[pi].unlocked = true;
+        game.activePlanet = pi;
+        pushToast('🪐 ' + (lang === 'ru' ? 'Основана колония ' : 'Colony founded: ') + L(d.name) + '!');
+        sfx.quest();
+        recalcStats();
+        saveGame().catch(e => console.error("Save error:", e));
+        return true;
+    }
+    function selectPlanet(pi) {
+        if (!game.colonies[pi].unlocked) return;
+        game.activePlanet = pi;
+        game.listScroll = 0; game.listScrollTarget = 0;
+        recalcStats();
+    }
+    // Цели империи: последовательная цепочка с наградами (кристаллы + наука)
+    function checkMissions() {
+        if (game.missionIdx >= MISSION_DEFS.length) return;
+        let m = MISSION_DEFS[game.missionIdx];
+        if (!m) return;
+        let p;
+        try { p = m.prog(); } catch (e) { return; }
+        if (!p || p[0] < p[1]) return;
+        let rw = missionReward(game.missionIdx);
+        game.crystals += rw.c; game.runCrystals += rw.c; game.totalCrystals += rw.c;
+        game.science += rw.s;
+        pushToast(t.missionDone + L(m.d) + '  +' + formatNum(rw.c) + ' 💎 +' + rw.s + ' 🧪');
+        game.missionIdx++;
+        if (game.missionIdx >= MISSION_DEFS.length) pushToast(t.missionAllDone);
+        game.missionFlash = 1.2;
+        sfx.quest();
+        saveGame().catch(e => console.error("Save error:", e));
+    }
+
+    // Авто-продажа Робота-кассира: продаёт излишек сверх резерва активного заказа
+    // (ручной продажи больше нет — империя продаёт сама, v3.2)
+    function sellAll(auto) {
+        if (game.eggsStored <= 0 || !game.cache) return;
+        let reserve = game.contract ? game.contract.need : 0;
+        let amt = Math.max(0, game.eggsStored - reserve);
+        if (amt <= 0) return;
+        let v = Math.floor(amt * game.cache.eggPrice);
+        if (v <= 0) return;
+        game.crystals += v; game.runCrystals += v; game.totalCrystals += v;
+        game.eggsSold += amt;
+        game.eggsStored -= amt;
+        let bar = sellBarGeom();
+        addFloat(bar.x + bar.w / 2, bar.y - 10, '+' + formatNum(v) + ' 💎', '#FFD700');
+        if (auto) { game.autoSellFlash = 1.2; pushToast('🤖 ' + (lang === 'ru' ? 'Авто-продажа: +' : 'Auto-sell: +') + formatNum(v) + ' 💎'); }
+        sfx.sell();
+        recalcStats();
+        saveGame().catch(e => console.error("Save error:", e));
+    }
+
+    // --- Заказы планет: цель с премиальной наградой ---
+    // Объём заказа привязан к складу (50–80% вместимости), чтобы цель
+    // всегда была достижима; награда — премия ~x1.6–2.0 к рыночной цене.
+    function genContract() {
+        let n = Math.max(30, Math.floor(game.cache.cap * (0.5 + Math.random() * 0.3)));
+        let reward = Math.ceil((n * game.cache.eggPrice * (1.6 + Math.random() * 0.4) + game.cache.incomePerSec * 20) * (game.cache.orderBonus || 1));
+        game.contract = {
+            planet: PLANETS[Math.floor(Math.random() * PLANETS.length)],
+            need: n, reward: reward
+        };
+    }
+    function claimContract() {
+        let c = game.contract;
+        if (!c || game.eggsStored < c.need) return;
+        game.eggsStored -= c.need;
+        game.crystals += c.reward; game.runCrystals += c.reward; game.totalCrystals += c.reward;
+        game.contractsDone++;
+        game.contract = null;
+        game.contractCooldown = 15;
+        pushToast('📦 ' + (lang === 'ru' ? 'Заказ выполнен: +' : 'Order completed: +') + formatNum(c.reward) + ' 💎');
+        sfx.quest();
         saveGame().catch(e => console.error("Save error:", e));
         showInterstitial();
     }
 
-    function spawnMeteor() {
-        let y = Math.random() * (H * 0.5) + 150;
-        game.meteors.push({ x: -50, y: y, vx: 8 + Math.random()*4, vy: 1.5, life: 15, size: 25 });
+    // --- Престиж «Большой Взрыв» ---
+    const PRESTIGE_REQ = 500000;
+    function prestigeGain() {
+        if (game.runCrystals < PRESTIGE_REQ) return 0;
+        return Math.max(1, Math.floor(Math.pow(game.runCrystals / 1e4, 0.55)));
+    }
+    function doPrestige() {
+        let gain = prestigeGain();
+        if (gain <= 0) return;
+        game.shards += gain;
+        game.prestiges++;
+        pushToast(t.prestigeToast + gain + ' ⭐');
+        game.cameraShake = 25;
+        for (let i = 0; i < 40; i++) {
+            let a = Math.random() * Math.PI * 2, sp = Math.random() * 10 + 2;
+            game.particles.push({ x: W / 2, y: H / 2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, size: 2 + Math.random() * 5, color: Math.random() < 0.5 ? '#FFD700' : '#9d4edd' });
+        }
+        game.shockwaves.push({ x: W / 2, y: H / 2, radius: 0, maxRadius: 240, life: 1 });
+        // Сброс забега: бизнесы всех колоний, улучшения, реактор.
+        // Менеджеры, технологии, наука, колонии, цели и достижения остаются навсегда.
+        game.crystals = START_CRYSTALS; game.runCrystals = 0;
+        game.eggsStored = 0;
+        game.colonies.forEach(c => c.biz.forEach(b => { b.level = 0; b.t = 0; }));
+        game.reactor = 0;
+        game.upgOwned = {};
+        game.contract = null; game.contractCooldown = 8;
+        game.boosts.prod = 0; game.boosts.adBoost = 0;
+        game.currentTab = 'biz'; game.listScroll = 0; game.listScrollTarget = 0;
+        recalcStats();
+        sfx.meteor();
+        saveGame().catch(e => console.error("Save error:", e));
     }
 
+    // --- Достижения: авто-выдача с наградой кристаллами ---
+    function checkAchievements() {
+        ACHV_DEFS.forEach(a => {
+            if (!game.achv[a.id] && a.test()) {
+                game.achv[a.id] = true;
+                let gain = Math.max(1000, game.cache.incomePerSec * 300);
+                game.crystals += gain; game.runCrystals += gain; game.totalCrystals += gain;
+                pushToast('🏆 ' + (lang === 'ru' ? a.ru : a.en) + '  +' + formatNum(gain) + ' 💎');
+                sfx.quest();
+            }
+        });
+    }
+
+    // --- Тап по Ядру: чисто визуальный отклик, дохода не даёт. Главная механика —
+    // пассивное производство и управленческие решения, а не клики (v3.2) ---
+    function tapCore(x, y) {
+        game.eggPulse = 0.85;
+        game.shockwaves.push({ x, y, radius: 0, maxRadius: 100, life: 1 });
+        for (let i = 0; i < 8; i++) {
+            let angle = Math.random() * Math.PI * 2, speed = Math.random() * 8 + 2;
+            game.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2, life: 1, size: 2 + Math.random() * 4, color: `hsl(${260 + Math.random() * 60}, 100%, 70%)` });
+        }
+        if (!game.stats.coreHintShown) {
+            game.stats.coreHintShown = true;
+            pushToast(lang === 'ru' ? '🌌 Ядро производит само — управляй империей!' : '🌌 The Core produces on its own — run your empire!');
+        }
+    }
+
+    // --- Найм менеджера бизнеса (v3.2): производство его бизнеса x2 навсегда ---
+    function hireManager(id) {
+        let m = MGR_DEFS.find(x => x.id === id);
+        if (!m || game.mgrOwned[id]) return;
+        if (game.crystals < m.cost) { pushToast(lang === 'ru' ? '💎 Мало кристаллов на найм' : '💎 Not enough crystals to hire'); return; }
+        game.crystals -= m.cost;
+        game.mgrOwned[id] = true;
+        pushToast('👤 ' + L(m.name) + (lang === 'ru' ? ' в команде: производство x2!' : ' joined: production x2!'));
+        sfx.buy();
+        recalcStats();
+        saveGame().catch(e => console.error("Save error:", e));
+    }
+
+    // ====================================================================================
+    // 6. СИМУЛЯЦИЯ: производство, рынок, события
+    // ====================================================================================
+    function spawnMeteor() {
+        let y = Math.random() * (H * 0.5) + 150;
+        game.meteors.push({ x: -50, y: y, vx: 8 + Math.random() * 4, vy: 1.5, life: 15, size: 25 });
+    }
     function clickMeteor(m) {
-        let gain = Math.max(100, game.dps * game.multiplier * 120);
-        if (gain <= 100) gain = game.tapPower * 50; 
-        
-        game.dust += gain;
-        game.totalDust += gain;
-        game.meteorsCaught++;
-        
-        game.floatTexts.push({ x: m.x, y: m.y, text: "+" + formatNum(gain), life: 2, vy: -2, color: "#FFD700" });
+        let gain = Math.max(100, game.cache.incomePerSec * 120);
+        game.crystals += gain; game.runCrystals += gain; game.totalCrystals += gain;
+        game.eventsCaught++;
+        addFloat(m.x, m.y, '+' + formatNum(gain) + ' 💎', '#FFD700');
         sfx.meteor();
         game.meteors = game.meteors.filter(x => x !== m);
         game.cameraShake = 10;
-        for(let i=0; i<20; i++) {
-            game.particles.push({ x: m.x, y: m.y, vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15, life: 1, size: 3+Math.random()*5, color: "#FFD700" });
-        }
-        
-        let q = game.quests.data.find(x => x.type === 'meteor');
-        if (q && !q.done) { q.current++; if (q.current >= q.target) q.done = true; }
-    }
-
-    function spinRoulette() {
-        if (game.rouletteSpinning) return;
-        let now = Date.now();
-        if (now - game.lastSpinReset > 86400000) {
-            game.lastSpinReset = now;
-            game.freeSpins = 1;
-        }
-        if (game.freeSpins > 0) { game.freeSpins--; startSpin(); } 
-        else if (adsUI) { showRewarded('roulette'); }
-        else { startSpin(); } // Реклама не подключена: крутим бесплатно
-    }
-
-    function startSpin() {
-        game.rouletteSpinning = true;
-        game.rouletteResult = null;
-        game.rouletteStopTime = Date.now() + 3000 + Math.random() * 2000;
-        sfx.roulette();
-    }
-
-    function finishSpin() {
-        let winningAngle = (270 - game.rouletteAngle + 36000) % 360;
-        let segment = Math.floor(winningAngle / 45);
-        let prizes = ["x2", lang === 'ru' ? "Пыль" : "Dust", "x2", lang === 'ru' ? "Пусто" : "Empty", lang === 'ru' ? "ДЖ" : "JACK", lang === 'ru' ? "Пусто" : "Empty", "x2", lang === 'ru' ? "Пыль" : "Dust"];
-        let res = prizes[segment];
-        game.rouletteResult = res;
-        game.rouletteSpinning = false;
-
-        if (res.includes("x2")) game.boostTime = 60;
-        else if (res.includes("ДЖ") || res.includes("JACK")) game.boostTime = 300;
-        else if (res.includes("Пыль") || res.includes("Dust")) {
-            let gain = Math.max(1000, game.dps * game.multiplier * 3600);
-            game.dust += gain; game.totalDust += gain;
-            game.cameraShake = 20;
+        for (let i = 0; i < 20; i++) {
+            game.particles.push({ x: m.x, y: m.y, vx: (Math.random() - 0.5) * 15, vy: (Math.random() - 0.5) * 15, life: 1, size: 3 + Math.random() * 5, color: "#FFD700" });
         }
     }
 
+    // --- События: золотая комета / НЛО-торговец / метеоритный дождь ---
+    function spawnEvent() {
+        let types = ['comet', 'ufo', 'rain'].filter(x => x !== game.lastEventType);
+        let type = types[Math.floor(Math.random() * types.length)];
+        game.lastEventType = type;
+        let playW = game.isMobile ? W : (W - 360);
+        if (type === 'comet') {
+            game.activeEvent = { type: type, x: -60, y: H * (0.24 + Math.random() * 0.26), vx: playW / 14, hits: 0, need: 3, life: 20, t: 0 };
+        } else if (type === 'ufo') {
+            game.activeEvent = { type: type, x: playW / 2, y: H * 0.28, hits: 0, need: 1, life: 14, t: 0 };
+        } else {
+            game.rainLeft = 6; game.rainT = 0;
+            game.activeEvent = { type: 'rain', life: 8, t: 0 };
+        }
+    }
+    // Сканер удачи (t_luck): события появляются чаще
+    function eventCooldown(base) { return base * (game.tech.owned.t_luck ? 0.65 : 1); }
+    function finishEvent(ev) {
+        game.activeEvent = null;
+        game.eventsCaught++;
+        game.eventTimer = eventCooldown(45 + Math.random() * 30);
+    }
+    function hitComet() {
+        let ev = game.activeEvent;
+        if (!ev || ev.type !== 'comet') return;
+        ev.hits++;
+        let gain = Math.max(200, game.cache.incomePerSec * 60);
+        game.crystals += gain; game.runCrystals += gain; game.totalCrystals += gain;
+        addFloat(ev.x, ev.y, '+' + formatNum(gain) + ' 💎', '#FFD700');
+        for (let i = 0; i < 8; i++) {
+            game.particles.push({ x: ev.x, y: ev.y, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10, life: 1, size: 2 + Math.random() * 4, color: '#FFD700' });
+        }
+        sfx.click();
+        if (ev.hits >= ev.need) {
+            let bonus = Math.max(1000, game.cache.incomePerSec * 600);
+            game.crystals += bonus; game.runCrystals += bonus; game.totalCrystals += bonus;
+            game.boosts.prod = Math.max(game.boosts.prod, 60);
+            addFloat(ev.x, ev.y - 30, '+' + formatNum(bonus) + ' 💎', '#FFD700');
+            pushToast(t.cometToast);
+            game.cameraShake = 10;
+            sfx.meteor();
+            finishEvent(ev);
+        }
+    }
+    function hitUfo() {
+        let ev = game.activeEvent;
+        if (!ev || ev.type !== 'ufo') return;
+        let roll = Math.random();
+        if (roll < 0.4) {
+            let gain = Math.max(1500, game.cache.incomePerSec * 900);
+            game.crystals += gain; game.runCrystals += gain; game.totalCrystals += gain;
+            pushToast(t.giftCrystals + formatNum(gain) + ' 💎');
+        } else if (roll < 0.7) {
+            game.boosts.prod = Math.max(game.boosts.prod, 90);
+            pushToast(t.giftBoost);
+        } else {
+            game.eggsStored = game.cache.cap;
+            pushToast(t.giftFill);
+        }
+        game.cameraShake = 12;
+        sfx.quest();
+        finishEvent(ev);
+    }
+    function updateEvents(dt) {
+        if (game.rainLeft > 0) {
+            game.rainT -= dt;
+            if (game.rainT <= 0) { spawnMeteor(); game.rainLeft--; game.rainT = 0.8; }
+        }
+        if (game.modal || game.rouletteSpinning) return;
+        if (!game.activeEvent) {
+            game.eventTimer -= dt;
+            if (game.eventTimer <= 0) spawnEvent();
+            return;
+        }
+        let ev = game.activeEvent;
+        ev.t += dt; ev.life -= dt;
+        if (ev.type === 'comet') ev.x += ev.vx * dt;
+        if (ev.type === 'ufo') ev.y = H * 0.28 + Math.sin(ev.t * 2) * 14;
+        let expired = ev.life <= 0 || (ev.type === 'comet' && ev.x > W + 80);
+        if (expired) {
+            game.activeEvent = null;
+            game.eventTimer = eventCooldown(40 + Math.random() * 30);
+        }
+    }
+
+    // --- Производство бизнесов: автоматические циклы (ядро тайкуна).
+    // v3.1: обход всех открытых колоний + эффективность энергии + множители техов/планет
+    function updateBiz(dt) {
+        game.storageFull = false;
+        game.colonies.forEach(colony => {
+            if (!colony.unlocked) return;
+            colony.biz.forEach(b => {
+                if (b.level <= 0) return;
+                // Яичные бизнесы встают на паузу при полном складе
+                if (b.def.produces === 'eggs' && game.eggsStored >= game.cache.cap) {
+                    game.storageFull = true;
+                    return;
+                }
+                let sp = bizSpeed(b);
+                b.t += dt * sp;
+                let guard = 0;
+                while (b.t >= b.def.cycle && guard < 60) {
+                    b.t -= b.def.cycle; guard++;
+                    let out = b.def.baseOut * colony.def.outMult * b.level * game.cache.bizMult[b.def.id] *
+                        game.cache.prestige * game.cache.boost * game.cache.eff;
+                    out *= (b.def.produces === 'eggs') ? game.cache.prodEgg : game.cache.prodCrys;
+                    if (b.def.produces === 'eggs') {
+                        let space = game.cache.cap - game.eggsStored;
+                        let add = Math.min(out, space);
+                        game.eggsStored += add; game.eggsProduced += add;
+                        if (add < out) { game.storageFull = true; b.t = b.def.cycle; break; }
+                    } else {
+                        game.crystals += out; game.runCrystals += out; game.totalCrystals += out;
+                    }
+                }
+            });
+        });
+    }
+
+    // --- Рынок: цена плавно колеблется + регулярные события цен ---
+    function updateMarket(dt) {
+        game.market.t -= dt;
+        if (game.market.t <= 0) {
+            game.market.target = 0.6 + Math.random() * 1.3;
+            game.market.t = 22 + Math.random() * 16;
+        }
+        game.market.mult += (game.market.target - game.market.mult) * Math.min(dt * 0.7, 1);
+        if (game.market.eventT > 0) {
+            game.market.eventT -= dt;
+            if (game.market.eventT <= 0) { game.market.eventMult = 1; recalcStats(); }
+        } else {
+            game.market.eventTimer -= dt;
+            if (game.market.eventTimer <= 0) {
+                let up = Math.random() < 0.55;
+                game.market.eventMult = up ? 2.5 : 0.5;
+                // Алготрейдинг (t_market): события чаще и дольше
+                game.market.eventT = game.tech.owned.t_market ? 40 : 25;
+                game.market.eventTimer = (80 + Math.random() * 50) * (game.tech.owned.t_market ? 0.75 : 1);
+                pushToast(up ? t.marketUp : t.marketDown);
+                recalcStats();
+            }
+        }
+    }
+
+    // ====================================================================================
+    // 7. ГЛАВНЫЙ UPDATE
+    // ====================================================================================
     function update(dt) {
-        let currentMult = game.multiplier * (game.boostTime > 0 ? 2 : 1) * (game.meteorBoostTime > 0 ? 5 : 1);
-        let currentDps = game.dps * currentMult;
-        game.dust += currentDps * dt; game.totalDust += currentDps * dt;
+        game.cacheTick -= dt;
+        if (game.cacheTick <= 0) { recalcStats(); game.cacheTick = 0.25; }
+
+        updateBiz(dt);
+        updateMarket(dt);
+        updateEvents(dt);
+
+        // Наука копится от Лабораторий; исследования идут реальным временем
+        if (game.cache) game.science += game.cache.sciPerSec * dt;
+        if (game.tech.active) {
+            game.tech.active.left -= dt;
+            if (game.tech.active.left <= 0) finishResearch();
+        }
+
+        // Робот-кассир (в штате с первой минуты, v3.2): непрерывно продаёт излишек
+        // сверх резерва активного заказа; Биржевой бот (t_sell2) ждёт цену выше
+        // средней, но при переполнении продаёт всё равно
+        if (game.cache) {
+            let reserve = game.contract ? game.contract.need : 0;
+            let sellable = game.eggsStored - reserve;
+            let full = game.eggsStored >= game.cache.cap;
+            let goodPrice = !game.cache.sellBot || game.market.mult >= 1.1 || game.market.eventMult > 1;
+            if (sellable >= 25 && goodPrice) sellAll(true);
+            else if (full && sellable > 0) sellAll(true);
+        }
+
+        // Цели империи: проверка раз в 0.5 с
+        game.missionTick = (game.missionTick || 0) + dt;
+        if (game.missionTick >= 0.5) { game.missionTick = 0; checkMissions(); }
+
+        if (game.boosts.prod > 0) game.boosts.prod -= dt;
+        if (game.boosts.adBoost > 0) game.boosts.adBoost -= dt;
+        if (game.autoSellFlash > 0) game.autoSellFlash -= dt;
+        if (game.missionFlash > 0) game.missionFlash -= dt;
+
+        // Заказы: новый появляется после кулдауна
+        if (!game.contract) {
+            game.contractCooldown -= dt;
+            if (game.contractCooldown <= 0) genContract();
+        }
 
         if (game.eggPulse < 1) game.eggPulse += dt * 3;
         if (game.eggPulse > 1) game.eggPulse = 1;
         game.eggAngle += dt * 0.2;
+        if (game.cameraShake > 0) game.cameraShake -= dt * 20;
 
         game.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= dt * 2; });
         game.particles = game.particles.filter(p => p.life > 0);
-        
         game.floatTexts.forEach(ft => { ft.y += ft.vy; ft.life -= dt * 1.2; });
         game.floatTexts = game.floatTexts.filter(ft => ft.life > 0);
-
         game.shockwaves.forEach(s => { s.radius += dt * 200; s.life -= dt * 2; });
         game.shockwaves = game.shockwaves.filter(s => s.life > 0);
+        game.stars.forEach(s => { s.x -= s.speed; if (s.x < 0) s.x = W; });
 
-        if (game.boostTime > 0) game.boostTime -= dt;
-        if (game.meteorBoostTime > 0) game.meteorBoostTime -= dt;
-        if (game.cameraShake > 0) game.cameraShake -= dt * 20;
-
-        if (Math.random() < 0.005) spawnMeteor();
-        game.meteors.forEach(m => { m.x += m.vx; m.y += m.vy; m.life -= dt; });
-        game.meteors = game.meteors.filter(m => m.life > 0 && m.x < W + 100);
+        game.listScroll += (game.listScrollTarget - game.listScroll) * Math.min(dt * 15, 1);
+        let targetAnim = game.uiPanelOpen ? 1 : 0;
+        game.panelAnim += (targetAnim - game.panelAnim) * Math.min(dt * 15, 1);
 
         if (game.rouletteSpinning) {
             game.rouletteAngle += dt * 720;
             if (Date.now() > game.rouletteStopTime) finishSpin();
         }
 
-        game.stars.forEach(s => { s.x -= s.speed; if (s.x < 0) s.x = W; });
+        game.toasts.forEach(ts => { ts.life -= dt; });
+        game.toasts = game.toasts.filter(ts => ts.life > 0);
 
-        game.shopScroll += (game.shopScrollTarget - game.shopScroll) * Math.min(dt * 15, 1);
-
-        let targetAnim = game.uiPanelOpen ? 1 : 0;
-        game.panelAnim += (targetAnim - game.panelAnim) * Math.min(dt * 15, 1);
+        game.achvTick = (game.achvTick || 0) + dt;
+        if (game.achvTick >= 1) { game.achvTick = 0; if (game.cache) checkAchievements(); }
 
         // Полноэкранная реклама каждые INTERSTITIAL_INTERVAL секунд (по умолчанию 3 мин)
         if (!game.modal && !game.rouletteSpinning &&
@@ -541,7 +1165,7 @@
     }
 
     // ====================================================================================
-    // 5. RENDERING
+    // 8. РЕНДЕРИНГ
     // ====================================================================================
     const images = {};
     // АССЕТЫ ЗАШИТЫ ПРЯМО В HTML (data URI): яйцо и фон показываются ВСЕГДА,
@@ -575,41 +1199,42 @@
         rect(x, y, w, h, r, false, true);
         ctx.restore();
     }
-    
+
     function uiButton(id, x, y, w, h) {
         game.uiElements.push({ id, x, y, w, h });
     }
 
     function draw() {
         ctx.clearRect(0, 0, W, H);
-        game.uiElements = []; 
-        
+        game.uiElements = [];
+
         ctx.save();
-        if (game.cameraShake > 0) ctx.translate((Math.random()-0.5)*game.cameraShake, (Math.random()-0.5)*game.cameraShake);
+        if (game.cameraShake > 0) ctx.translate((Math.random() - 0.5) * game.cameraShake, (Math.random() - 0.5) * game.cameraShake);
 
         drawBackground();
-        
-        let panelW = game.isMobile ? W * 0.85 : 340;
-        let playW = game.isMobile ? W : (W - panelW);
-        let panelX = W - panelW;
-        let panelVisibleX = panelX + (1 - game.panelAnim) * panelW;
-        
+
+        let playW = game.isMobile ? W : (W - 360);
+
         drawTopUI(playW);
+        drawContractCard(playW);
+        drawMissionBar();
         drawEgg(playW);
         drawShockwaves();
         drawMeteors();
         drawParticles();
-        
+        drawEvents(playW);
+        drawSellBar(playW);
+        drawToasts(playW);
+
         if (game.isMobile) drawMobileMenuButton();
-        
-        if (game.panelAnim > 0 && game.isMobile) {
+
+        if (game.isMobile && game.panelAnim > 0) {
             ctx.fillStyle = `rgba(0, 0, 0, ${game.panelAnim * 0.6})`;
             ctx.fillRect(0, 0, W, H);
         }
 
-        if (game.panelAnim > 0.01) {
-            drawSidePanel(panelVisibleX, 0, panelW, H);
-        }
+        let pg = panelGeom();
+        if (game.panelAnim > 0.01) drawPanel(pg.x, pg.y, pg.w, pg.h);
 
         if (game.modal) drawModal();
 
@@ -626,7 +1251,6 @@
             grad.addColorStop(1, '#05050a');
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, W, H);
-            
             game.stars.forEach(s => {
                 ctx.globalAlpha = s.alpha;
                 ctx.fillStyle = "#FFF";
@@ -637,37 +1261,64 @@
     }
 
     function drawTopUI(playW) {
-        glassPanel(0, 0, playW, 90, 0, 0.2);
-        
+        glassPanel(0, 0, playW, 96, 0, 0.2);
+
+        // Наука и энергосистема (v3.1) — левый угол игровой зоны
+        ctx.textAlign = "left";
+        ctx.font = "bold 13px sans-serif";
+        ctx.fillStyle = "#7ee8ff";
+        ctx.fillText('🧪 ' + formatNum(Math.floor(game.science)) + ' (+' + game.cache.sciPerSec.toFixed(1) + t.perSec + ')', 12, 30);
+        let effPct = Math.round(game.cache.eff * 100);
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillStyle = effPct < 100 ? '#FF7777' : '#9db4d0';
+        ctx.fillText('⚡ ' + Math.round(game.cache.consumption) + '/' + Math.round(game.cache.energyCap) +
+            (effPct < 100 ? ' (' + effPct + '%)' : ''), 12, 50);
+
         ctx.textAlign = "center";
         ctx.fillStyle = "#FFFFFF";
-        ctx.font = "bold 32px sans-serif";
-        ctx.fillText(formatNum(game.dust), playW/2, 35);
-        
+        ctx.font = "bold 30px sans-serif";
+        ctx.fillText(formatNum(game.crystals), playW / 2, 33);
+
         ctx.font = "11px sans-serif";
         ctx.fillStyle = "#9d4edd";
-        ctx.fillText(t.stardust.toUpperCase(), playW/2, 53);
-        
-        let currentMult = game.multiplier * (game.boostTime > 0 ? 2 : 1) * (game.meteorBoostTime > 0 ? 5 : 1);
-        let currentTap = game.tapPower * currentMult;
-        let currentDps = game.dps * currentMult;
+        ctx.fillText(t.crystals.toUpperCase(), playW / 2, 50);
 
-        ctx.font = "bold 14px sans-serif";
-        
+        // Шкала склада: 🥚 N / CAP
+        let cap = game.cache.cap;
+        let fill = Math.min(1, game.eggsStored / cap);
+        let bw = Math.min(playW * 0.5, 260), bx = playW / 2 - bw / 2, by = 64;
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        rect(bx, by, bw, 9, 4, true, false);
+        ctx.fillStyle = fill >= 1 ? '#FF5555' : (fill > 0.75 ? '#FFA500' : '#00e5ff');
+        rect(bx, by, Math.max(fill > 0 ? 4 : 0, bw * fill), 9, 4, true, false);
+
+        ctx.font = "bold 11px sans-serif";
         ctx.textAlign = "right";
-        ctx.fillStyle = "#FFD700";
-        ctx.fillText(formatNum(currentTap), playW/2 - 10, 75);
-        ctx.font = "10px sans-serif";
-        ctx.fillStyle = "#aaa";
-        ctx.fillText(t.perClick, playW/2 - 10, 86);
-
+        ctx.fillStyle = fill >= 1 ? '#FF7777' : '#cfe9ff';
+        ctx.fillText('🥚 ' + formatNum(Math.floor(game.eggsStored)) + ' / ' + formatNum(cap), bx - 8, by + 8);
         ctx.textAlign = "left";
-        ctx.font = "bold 14px sans-serif";
         ctx.fillStyle = "#00FF99";
-        ctx.fillText(formatNum(currentDps), playW/2 + 10, 75);
-        ctx.font = "10px sans-serif";
-        ctx.fillStyle = "#aaa";
-        ctx.fillText(t.perSecond, playW/2 + 10, 86);
+        ctx.fillText('+' + formatNum(game.cache.incomePerSec) + ' 💎' + t.perSec, bx + bw + 8, by + 8);
+
+        // Цена яйца на рынке + индикатор рыночного события
+        let price = game.cache.eggPrice;
+        let evTxt = '';
+        if (game.market.eventT > 0) {
+            evTxt = (game.market.eventMult > 1 ? ' 📈x' + game.market.eventMult : ' 📉x' + game.market.eventMult) + ' ' + Math.ceil(game.market.eventT) + t.secShort;
+        }
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillStyle = game.market.eventMult > 1 ? '#FFD700' : (game.market.eventMult < 1 ? '#FF7777' : '#9db4d0');
+        ctx.fillText('💰 ' + price.toFixed(2) + ' 💎/🥚' + evTxt, playW / 2, 90);
+
+        // Индикатор рекламного/событийного ускорения (справа — не пересекается с ценой)
+        let boostLeft = Math.max(game.boosts.prod, game.boosts.adBoost);
+        if (boostLeft > 0) {
+            ctx.textAlign = "right";
+            ctx.fillStyle = '#FFD700';
+            ctx.font = "bold 12px sans-serif";
+            ctx.fillText((game.isMobile ? t.prodRushShort : t.prodRush) + ' ' + Math.ceil(boostLeft) + t.secShort, playW - (game.isMobile ? 12 : 122), 90);
+        }
 
         if (!game.isMobile) {
             uiButton('lang_toggle', playW - 110, 15, 40, 40);
@@ -681,37 +1332,158 @@
         }
     }
 
-    function drawMobileMenuButton() {
-        let btnSize = 50, x = 15, y = 15; // Слева сверху: правый угол занят сервисными кнопками VK
-        glassPanel(x, y, btnSize, btnSize, 10, 0.3);
-        
-        ctx.strokeStyle = "#FFF";
-        ctx.lineWidth = 3;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(x + 12, y + 18);
-        ctx.lineTo(x + 38, y + 18);
-        ctx.moveTo(x + 12, y + 25);
-        ctx.lineTo(x + 38, y + 25);
-        ctx.moveTo(x + 12, y + 32);
-        ctx.lineTo(x + 38, y + 32);
-        ctx.stroke();
-        
-        uiButton('toggle_menu', x, y, btnSize, btnSize);
+    function drawContractCard(playW) {
+        let w = Math.min(playW - 24, 470), x = (playW - w) / 2, y = 104, h = 66;
+        glassPanel(x, y, w, h, 12, 0.22);
+
+        if (!game.contract) {
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#9db4d0";
+            ctx.font = "13px sans-serif";
+            ctx.fillText('📦 ' + t.contractNext + ' ' + Math.ceil(game.contractCooldown) + ' ' + t.secShort, x + w / 2, y + 38);
+            return;
+        }
+        let c = game.contract;
+        let ready = game.eggsStored >= c.need;
+
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#FFF";
+        ctx.font = "bold 13px sans-serif";
+        ctx.fillText('📦 ' + t.contractLbl + ' ' + c.planet, x + 14, y + 22);
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#FFD700";
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillText(t.contractReward + ': 💎 ' + formatNum(c.reward), x + w - 138, y + 22);
+
+        // Прогресс набора яиц
+        let prog = Math.min(1, game.eggsStored / c.need);
+        let pbW = w - 170;
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        rect(x + 14, y + 38, pbW, 12, 6, true, false);
+        ctx.fillStyle = ready ? '#00FF99' : '#9d4edd';
+        rect(x + 14, y + 38, Math.max(prog > 0 ? 4 : 0, pbW * prog), 12, 6, true, false);
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#cfe9ff";
+        ctx.font = "11px sans-serif";
+        ctx.fillText('🥚 ' + formatNum(Math.floor(game.eggsStored)) + ' / ' + formatNum(c.need), x + 14, y + 63);
+
+        // Кнопка сдачи заказа
+        let btnX = x + w - 124, btnY = y + 16, btnW = 110, btnH = 38;
+        ctx.fillStyle = ready ? "#FFD700" : "rgba(255,255,255,0.12)";
+        rect(btnX, btnY, btnW, btnH, 10, true, false);
+        ctx.fillStyle = ready ? "#000" : "#777";
+        ctx.font = "bold 13px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(t.contractClaim, btnX + btnW / 2, btnY + 24);
+        if (ready) uiButton('contract_claim', btnX, btnY, btnW, btnH);
     }
 
-    function getEggStage() {
-        if (game.totalDust < 1000) return { color: '#9d4edd', glow: 'rgba(157, 78, 221, 0.4)', cracks: 0, orbit: 0 };
-        if (game.totalDust < 100000) return { color: '#e0aaff', glow: 'rgba(224, 170, 255, 0.4)', cracks: 2, orbit: 0 };
-        if (game.totalDust < 10000000) return { color: '#00f2fe', glow: 'rgba(0, 242, 254, 0.4)', cracks: 5, orbit: 3 };
-        if (game.totalDust < 1000000000) return { color: '#ffd700', glow: 'rgba(255, 215, 0, 0.4)', cracks: 10, orbit: 5 };
-        return { color: 'rainbow', glow: 'rgba(255, 255, 255, 0.5)', cracks: 20, orbit: 8 };
+    // Полоса текущей цели империи (v3.1): клик открывает вкладку «Статус»
+    function missionGeom() {
+        let playW = game.isMobile ? W : (W - 360);
+        let w = Math.min(playW - 24, 470);
+        return { x: (playW - w) / 2, y: 178, w: w, h: 26 };
+    }
+    function drawMissionBar() {
+        let g = missionGeom();
+        let done = game.missionIdx >= MISSION_DEFS.length;
+        let m = done ? null : MISSION_DEFS[game.missionIdx];
+        let p = null;
+        if (m) { try { p = m.prog(); } catch (e) { p = null; } }
+        let flash = game.missionFlash > 0;
+        glassPanel(g.x, g.y, g.w, g.h, 13, flash ? 0.4 : 0.22);
+        if (flash) {
+            ctx.strokeStyle = `rgba(0,255,153,${Math.min(1, game.missionFlash)})`;
+            ctx.lineWidth = 2;
+            rect(g.x, g.y, g.w, g.h, 13, false, true);
+        }
+        ctx.textAlign = "left";
+        ctx.font = "bold 11px sans-serif";
+        ctx.fillStyle = "#FFD700";
+        ctx.fillText('🎯 ' + t.missionLbl, g.x + 12, g.y + 17);
+        ctx.font = "12px sans-serif";
+        ctx.fillStyle = "#FFF";
+        let txt = done ? t.missionAllDone : L(m.d);
+        let maxW = g.w - 160;
+        while (ctx.measureText(txt).width > maxW && txt.length > 8) txt = txt.slice(0, txt.length - 2);
+        ctx.fillText(txt, g.x + 106, g.y + 17);
+        if (p) {
+            ctx.textAlign = "right";
+            ctx.font = "bold 11px sans-serif";
+            ctx.fillStyle = "#9db4d0";
+            ctx.fillText(formatNum(Math.min(Math.floor(p[0]), p[1])) + '/' + formatNum(p[1]), g.x + g.w - 12, g.y + 17);
+        }
+        if (!done) uiButton('mission_bar', g.x, g.y, g.w, g.h);
+    }
+
+    // Геометрия полки продажи (нужна и для всплывающих цифр).
+    // На мобильных при открытой шторке панелей поднимается НАД шторкой,
+    // иначе прячется под неё; на десктопе — всегда над баннером.
+    function sellBarGeom() {
+        let playW = game.isMobile ? W : (W - 360);
+        let w = Math.min(playW - 24, 460);
+        let y = H - 64 - bannerSafeOffset();
+        if (game.isMobile && game.panelAnim > 0.3) {
+            y = Math.min(y, panelGeom().y - 58);
+        }
+        return { x: (playW - w) / 2, y: y, w: w, h: 48 };
+    }
+
+    // Панель «Производство» (v3.2): склад + работа Робота-кассира.
+    // Кнопки продажи нет — империя продаёт сама, панель только информирует.
+    function drawSellBar(playW) {
+        let g = sellBarGeom();
+
+        ctx.save();
+        if (game.autoSellFlash > 0) {
+            ctx.strokeStyle = `rgba(0,255,153,${0.4 + 0.6 * Math.min(1, game.autoSellFlash)})`;
+            ctx.lineWidth = 3;
+            rect(g.x - 2, g.y - 2, g.w + 4, g.h + 4, 14, false, true);
+        }
+        glassPanel(g.x, g.y, g.w, g.h, 12, 0.35);
+        if (game.storageFull) {
+            ctx.strokeStyle = `rgba(255,85,85,${0.5 + 0.5 * Math.sin(Date.now() / 150)})`;
+            ctx.lineWidth = 2;
+            rect(g.x, g.y, g.w, g.h, 12, false, true);
+        }
+        ctx.restore();
+
+        // Слева: склад
+        let fill = Math.min(1, game.eggsStored / game.cache.cap);
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#FFF";
+        ctx.font = "bold 15px sans-serif";
+        ctx.fillText('🥚 ' + formatNum(Math.floor(game.eggsStored)), g.x + 16, g.y + 22);
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = fill >= 1 ? "#FF7777" : "#9db4d0";
+        ctx.fillText(t.storageLbl + ' ' + formatNum(Math.floor(game.eggsStored)) + ' / ' + formatNum(game.cache.cap), g.x + 16, g.y + 39);
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        rect(g.x + 108, g.y + 14, 64, 6, 3, true, false);
+        ctx.fillStyle = fill >= 1 ? '#FF5555' : (fill > 0.75 ? '#FFA500' : '#00e5ff');
+        rect(g.x + 108, g.y + 14, Math.max(fill > 0 ? 3 : 0, 64 * fill), 6, 3, true, false);
+
+        // Резерв под активный заказ (склад бережётся для сдачи)
+        if (game.contract) {
+            ctx.textAlign = "center";
+            ctx.font = "10px sans-serif";
+            ctx.fillStyle = "#FFA500";
+            ctx.fillText(t.reserveLbl + ': ' + formatNum(game.contract.need), g.x + g.w / 2, g.y + 39);
+        }
+
+        // Справа: Робот-кассир и его курс продажи
+        let rate = game.cache.eggPerSec * game.cache.eggPrice;
+        ctx.textAlign = "right";
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillStyle = "#00FF99";
+        ctx.fillText('🤖 +' + formatNum(rate) + ' 💎' + t.perSec, g.x + g.w - 16, g.y + 22);
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = "#9db4d0";
+        ctx.fillText(t.autoSellLbl, g.x + g.w - 16, g.y + 39);
     }
 
     function drawEgg(playW) {
-        let eggSize = Math.min(playW, H) * 0.4 * game.eggPulse;
-        let eggX = playW/2, eggY = H/2 - 30;
-        let stage = getEggStage();
+        let eggSize = Math.min(playW, H) * 0.32 * game.eggPulse;
+        let eggX = playW / 2, eggY = H / 2 - 10;
 
         ctx.save();
         ctx.translate(eggX, eggY);
@@ -719,63 +1491,32 @@
 
         let glowSize = eggSize * 1.8;
         let glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
-        glowGrad.addColorStop(0, stage.glow);
+        glowGrad.addColorStop(0, 'rgba(157, 78, 221, 0.4)');
         glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = glowGrad;
         ctx.beginPath(); ctx.arc(0, 0, glowSize, 0, Math.PI * 2); ctx.fill();
 
-        if (stage.orbit > 0) {
-            for(let i=0; i<stage.orbit; i++) {
-                let angle = game.eggAngle * 2 + (i * (Math.PI*2 / stage.orbit));
-                let ox = Math.cos(angle) * eggSize * 0.8;
-                let oy = Math.sin(angle) * eggSize * 0.8;
-                ctx.fillStyle = stage.color === 'rainbow' ? `hsl(${(Date.now()/10 + i*50)%360}, 100%, 60%)` : stage.color;
-                ctx.beginPath();
-                ctx.moveTo(ox, oy - 10);
-                ctx.lineTo(ox + 8, oy);
-                ctx.lineTo(ox, oy + 10);
-                ctx.lineTo(ox - 8, oy);
-                ctx.closePath();
-                ctx.fill();
-            }
-        }
-
         if (images.egg) {
-            ctx.drawImage(images.egg, -eggSize/2, -eggSize/2, eggSize, eggSize);
+            ctx.drawImage(images.egg, -eggSize / 2, -eggSize / 2, eggSize, eggSize);
         } else {
             ctx.beginPath();
-            ctx.ellipse(0, 0, eggSize/2, eggSize/1.5, 0, 0, Math.PI * 2);
-            let eggGrad = ctx.createRadialGradient(-eggSize/6, -eggSize/6, 5, 0, 0, eggSize);
-            if (stage.color === 'rainbow') {
-                let hue = (Date.now() / 10) % 360;
-                eggGrad.addColorStop(0, `hsl(${hue}, 100%, 80%)`);
-                eggGrad.addColorStop(0.5, `hsl(${hue+60}, 100%, 50%)`);
-                eggGrad.addColorStop(1, `hsl(${hue+120}, 100%, 20%)`);
-            } else {
-                eggGrad.addColorStop(0, '#ffffff');
-                eggGrad.addColorStop(0.3, stage.color);
-                eggGrad.addColorStop(1, '#000');
-            }
+            ctx.ellipse(0, 0, eggSize / 2, eggSize / 1.5, 0, 0, Math.PI * 2);
+            let eggGrad = ctx.createRadialGradient(-eggSize / 6, -eggSize / 6, 5, 0, 0, eggSize);
+            eggGrad.addColorStop(0, '#ffffff');
+            eggGrad.addColorStop(0.3, '#9d4edd');
+            eggGrad.addColorStop(1, '#000');
             ctx.fillStyle = eggGrad; ctx.fill();
-            
-            if (stage.cracks > 0) {
-                ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-                ctx.shadowColor = 'rgba(255, 255, 0, 1)';
-                ctx.shadowBlur = 10;
-                ctx.lineWidth = 2;
-                for(let i=0; i<stage.cracks; i++) {
-                    ctx.beginPath();
-                    ctx.moveTo(Math.sin(i)*5, -eggSize/3);
-                    ctx.lineTo(Math.sin(i*2)*15, 0);
-                    ctx.lineTo(Math.cos(i)*10, eggSize/4);
-                    ctx.stroke();
-                }
-                ctx.shadowBlur = 0;
-            }
         }
         ctx.restore();
-        
-        uiButton('egg', eggX - eggSize/2, eggY - eggSize/1.5, eggSize, eggSize*1.5);
+
+        if (game.storageFull) {
+            ctx.globalAlpha = 0.55 + 0.45 * Math.sin(Date.now() / 130);
+            ctx.fillStyle = '#FF5555'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(t.storageFull, eggX, eggY - eggSize * 0.95);
+            ctx.globalAlpha = 1;
+        }
+
+        uiButton('egg', eggX - eggSize / 2, eggY - eggSize / 1.5, eggSize, eggSize * 1.5);
     }
 
     function drawShockwaves() {
@@ -794,52 +1535,129 @@
             ctx.translate(m.x, m.y);
             let angle = Math.atan2(m.vy, m.vx);
             ctx.rotate(angle);
-            
             let grad = ctx.createLinearGradient(-60, 0, 0, 0);
             grad.addColorStop(0, 'rgba(255, 165, 0, 0)');
             grad.addColorStop(1, 'rgba(255, 165, 0, 1)');
             ctx.fillStyle = grad;
             ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(-60, 0); ctx.lineTo(0, 8); ctx.closePath(); ctx.fill();
-            
             ctx.fillStyle = "#FFD700";
             ctx.shadowColor = "#FFD700";
             ctx.shadowBlur = 15;
-            ctx.beginPath(); ctx.arc(0, 0, m.size/2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, m.size / 2, 0, Math.PI * 2); ctx.fill();
             ctx.shadowBlur = 0;
             ctx.restore();
-            
-            uiButton('meteor_' + game.meteors.indexOf(m), m.x - m.size, m.y - m.size, m.size*2, m.size*2);
+            uiButton('meteor_' + game.meteors.indexOf(m), m.x - m.size, m.y - m.size, m.size * 2, m.size * 2);
         });
     }
 
     function drawParticles() {
         ctx.globalCompositeOperation = 'lighter';
         game.particles.forEach(p => {
-            ctx.globalAlpha = p.life; 
+            ctx.globalAlpha = p.life;
             ctx.fillStyle = p.color;
             ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
         });
         ctx.globalCompositeOperation = 'source-over';
-        
+
         game.floatTexts.forEach(ft => {
-            ctx.globalAlpha = ft.life; 
+            ctx.globalAlpha = Math.min(1, ft.life);
             ctx.fillStyle = ft.color || "#FFFFFF";
-            ctx.font = "bold 22px sans-serif"; ctx.textAlign = "center";
-            ctx.save();
-            ctx.translate(ft.x, ft.y);
-            ctx.rotate(ft.rot || 0);
-            ctx.fillText(ft.text, 0, 0);
-            ctx.restore();
+            ctx.font = "bold 20px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(ft.text, ft.x, ft.y);
         });
         ctx.globalAlpha = 1;
     }
 
-    function drawSidePanel(x, y, w, h) {
-        glassPanel(x, y, w, h, 0, 0.6);
-        
+    function drawEvents(playW) {
+        let ev = game.activeEvent;
+        if (!ev) return;
+        let info = { comet: [t.cometName, t.cometHint], ufo: [t.ufoName, t.ufoHint], rain: [t.rainName, ''] }[ev.type];
+        if (info) {
+            ctx.globalAlpha = 0.65 + 0.35 * Math.sin(Date.now() / 200);
+            ctx.fillStyle = '#FFD700'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(info[0] + (info[1] ? ' — ' + info[1] : ''), playW / 2, 216);
+            ctx.globalAlpha = 1;
+        }
+        if (ev.type === 'comet') {
+            ctx.save();
+            ctx.translate(ev.x, ev.y); ctx.rotate(Math.atan2(0, ev.vx));
+            let g = ctx.createLinearGradient(-110, 0, 0, 0);
+            g.addColorStop(0, 'rgba(255,215,0,0)'); g.addColorStop(1, 'rgba(255,215,0,0.9)');
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(-110, 0); ctx.lineTo(0, 9); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#FFD700'; ctx.shadowColor = '#FFD700'; ctx.shadowBlur = 20;
+            ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.restore();
+            uiButton('event_comet', ev.x - 32, ev.y - 32, 64, 64);
+        } else if (ev.type === 'ufo') {
+            ctx.save();
+            ctx.translate(ev.x, ev.y);
+            let beam = ctx.createLinearGradient(0, 10, 0, H / 2 - ev.y + 40);
+            beam.addColorStop(0, 'rgba(0,255,153,0.35)'); beam.addColorStop(1, 'rgba(0,255,153,0)');
+            ctx.fillStyle = beam;
+            ctx.beginPath(); ctx.moveTo(-14, 12); ctx.lineTo(14, 12); ctx.lineTo(34, H / 2 - ev.y + 40); ctx.lineTo(-34, H / 2 - ev.y + 40); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#8a2be2'; ctx.shadowColor = '#8a2be2'; ctx.shadowBlur = 15;
+            ctx.beginPath(); ctx.ellipse(0, 0, 44, 14, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(0,242,254,0.85)';
+            ctx.beginPath(); ctx.ellipse(0, -10, 20, 12, 0, Math.PI, 0); ctx.fill();
+            for (let i = 0; i < 4; i++) {
+                ctx.fillStyle = Math.sin(Date.now() / 150 + i) > 0 ? '#FFD700' : '#5a4a00';
+                ctx.beginPath(); ctx.arc(-27 + i * 18, 6, 3.5, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+            uiButton('event_ufo', ev.x - 50, ev.y - 30, 100, 60);
+        }
+    }
+
+    function drawToasts(playW) {
+        game.toasts.forEach((ts, i) => {
+            ctx.globalAlpha = Math.min(1, ts.life);
+            ctx.font = 'bold 13px sans-serif';
+            let wd = ctx.measureText(ts.text).width + 30;
+            let x = playW / 2 - wd / 2, y = 234 + i * 30;
+            ctx.fillStyle = 'rgba(20,20,35,0.88)';
+            rect(x, y, wd, 26, 13, true, false);
+            ctx.strokeStyle = 'rgba(157,78,221,0.7)'; ctx.lineWidth = 1;
+            rect(x, y, wd, 26, 13, false, true);
+            ctx.fillStyle = '#FFF'; ctx.textAlign = 'center';
+            ctx.fillText(ts.text, playW / 2, y + 18);
+            ctx.globalAlpha = 1;
+        });
+    }
+
+    function drawMobileMenuButton() {
+        let btnSize = 50, x = 15, y = 15; // слева сверху: правый угол занят сервисными кнопками VK
+        glassPanel(x, y, btnSize, btnSize, 10, 0.3);
+        ctx.strokeStyle = "#FFF";
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x + 12, y + 18); ctx.lineTo(x + 38, y + 18);
+        ctx.moveTo(x + 12, y + 25); ctx.lineTo(x + 38, y + 25);
+        ctx.moveTo(x + 12, y + 32); ctx.lineTo(x + 38, y + 32);
+        ctx.stroke();
+        uiButton('toggle_menu', x, y, btnSize, btnSize);
+    }
+
+    // --- Панель управления: десктоп — справа, мобильные — снизу (шторка) ---
+    function panelGeom() {
+        if (game.isMobile) {
+            let safe = bannerSafeOffset();
+            let h = Math.min(H * 0.68, 640);
+            let y = H - safe - h + (1 - game.panelAnim) * (h + safe + 20);
+            return { x: 0, y: y, w: W, h: h };
+        }
+        return { x: W - 360, y: 0, w: 360, h: H };
+    }
+
+    function drawPanel(x, y, w, h) {
+        glassPanel(x, y, w, h, 0, 0.68);
+
         if (game.isMobile) {
             // Кнопки управления — слева, чтобы не перекрываться сервисными кнопками VK
-            let closeX = x + 15, closeY = 15;
+            let closeX = x + 15, closeY = y + 12;
             uiButton('toggle_menu', closeX, closeY, 40, 40);
             ctx.fillStyle = "#FFF"; ctx.font = "20px sans-serif"; ctx.textAlign = "center";
             ctx.fillText("✕", closeX + 20, closeY + 28);
@@ -852,10 +1670,10 @@
             ctx.fillText(soundEnabled ? "🔊" : "🔇", closeX + 120, closeY + 28);
         }
 
-        let tabs = [t.shop, t.quests, t.stats];
-        let tabKeys = ['shop', 'quests', 'stats'];
-        let tabY = game.isMobile ? y + 70 : y + 20; // На мобильных ниже — сверху строка кнопок ✕ / язык / звук
-        let tabW = w / 3;
+        let tabs = [t.tabBiz, t.tabUp, t.tabSci, t.tabStat];
+        let tabKeys = ['biz', 'up', 'sci', 'stat'];
+        let tabY = y + (game.isMobile ? 62 : 20);
+        let tabW = w / 4;
         tabs.forEach((tabName, i) => {
             let tx = x + i * tabW;
             let isActive = game.currentTab === tabKeys[i];
@@ -863,140 +1681,488 @@
                 ctx.fillStyle = "rgba(157, 78, 221, 0.3)";
                 rect(tx, tabY, tabW, 40, 0, true, false);
                 ctx.fillStyle = "#9d4edd";
-                ctx.fillRect(tx + tabW*0.25, tabY + 38, tabW*0.5, 2);
+                ctx.fillRect(tx + tabW * 0.25, tabY + 38, tabW * 0.5, 2);
             }
             ctx.fillStyle = isActive ? "#FFF" : "#888";
-            ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center";
-            ctx.fillText(tabName, tx + tabW/2, tabY + 25);
+            ctx.font = "bold " + (game.isMobile ? 13 : 15) + "px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(tabName, tx + tabW / 2, tabY + 25);
             uiButton('tab_' + tabKeys[i], tx, tabY, tabW, 40);
         });
 
-        let safe = bannerSafeOffset(); // на мобильных поднимаем контент над баннером
+        let safe = bannerSafeOffset();
         let contentY = tabY + 55;
-        let contentH = h - 210 - safe; 
-        if (game.currentTab === 'shop') drawShopTab(x, contentY, w, contentH);
-        else if (game.currentTab === 'quests') drawQuestsTab(x, contentY, w, contentH);
-        else if (game.currentTab === 'stats') drawStatsTab(x, contentY, w, contentH);
+        let contentH = h - (contentY - y) - 120 - safe;
+        if (game.currentTab === 'biz') drawBizTab(x, contentY, w, contentH);
+        else if (game.currentTab === 'up') drawUpgTab(x, contentY, w, contentH);
+        else if (game.currentTab === 'sci') drawSciTab(x, contentY, w, contentH);
+        else if (game.currentTab === 'stat') drawStatTab(x, contentY, w, contentH);
 
-        drawPanelBottomButtons(x, h - 110 - safe, w);
+        drawPanelBottomButtons(x, y + h - 118 - safe, w);
     }
 
-    function drawShopTab(px, py, pw, ph) {
-        let amounts = [1, 10, 25, "Max"];
+    function listClip(px, py, pw, ph, totalH) {
+        let viewH = Math.max(80, ph);
+        let maxScroll = Math.max(0, totalH - viewH);
+        game.listScrollTarget = Math.max(0, Math.min(game.listScrollTarget, maxScroll));
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(px, py, pw, viewH);
+        ctx.clip();
+        return { maxScroll, viewH };
+    }
+    function listScrollbar(px, py, pw, info, totalH) {
+        ctx.restore();
+        if (totalH > info.viewH) {
+            let barH = info.viewH * info.viewH / totalH;
+            let barY = py + game.listScroll * ((info.viewH - barH) / info.maxScroll);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+            rect(px + pw - 8, barY, 4, barH, 2, true, false);
+        }
+    }
+
+    function drawBizTab(px, py, pw, ph) {
+        // Селектор количества покупки: 1 / 10 / 100 / Макс
+        let amounts = [1, 10, 100, "Max"];
         let btnW = 50, btnH = 30, gap = 8;
-        let startX = px + pw/2 - (btnW * 4 + gap * 3) / 2;
+        let startX = px + pw / 2 - (btnW * 4 + gap * 3) / 2;
         amounts.forEach((amt, i) => {
             let x = startX + i * (btnW + gap);
             let isActive = game.buyAmount === amt;
             ctx.fillStyle = isActive ? "#9d4edd" : "rgba(255,255,255,0.1)";
             rect(x, py, btnW, btnH, 8, true, false);
             ctx.fillStyle = "#FFF"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
-            ctx.fillText(amt, x + btnW/2, py + 20);
+            ctx.fillText(amt === "Max" ? t.max : amt, x + btnW / 2, py + 20);
             uiButton('buy_amt_' + i, x, py, btnW, btnH);
         });
 
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(px, py + 45, pw, ph - 45);
-        ctx.clip();
-
-        let itemW = pw - 20, itemH = 65;
-        let totalH = game.upgrades.length * (itemH + 10);
-        let maxScroll = Math.max(0, totalH - (ph - 45));
-        game.shopScrollTarget = Math.max(0, Math.min(game.shopScrollTarget, maxScroll));
-
-        game.upgrades.forEach((upg, i) => {
-            let iy = py + 45 + i * (itemH + 10) - game.shopScroll;
-            if (iy + itemH < py + 45 || iy > py + ph) return;
-            
-            let x = px + 10;
-            
-            let displayAmt = (upg.type === 'mult') ? 1 : (game.buyAmount === "Max" ? Math.max(1, getMaxBuy(upg)) : game.buyAmount);
-            let cost = getUpgradeCost(upg, displayAmt);
-            let canBuy = game.dust >= cost;
-            
-            ctx.fillStyle = canBuy ? "rgba(0, 255, 200, 0.15)" : "rgba(255, 255, 255, 0.05)";
-            ctx.strokeStyle = canBuy ? "#00FF99" : "rgba(255,255,255,0.15)";
+        // Селектор колонии (v3.1): у каждой планеты свои бизнесы и множители
+        let chipsY = py + 38;
+        let chipW = (pw - 20 - 16) / 3;
+        COLONY_DEFS.forEach((pd, pi) => {
+            let cx = px + 10 + pi * (chipW + 8);
+            let col = game.colonies[pi];
+            let active = game.activePlanet === pi;
+            let canUnlock = colonyUnlockable(pi);
+            let techOk = !pd.reqTech || !!game.tech.owned[pd.reqTech];
+            ctx.fillStyle = active ? "rgba(157,78,221,0.4)" :
+                (col.unlocked ? "rgba(255,255,255,0.08)" :
+                    (canUnlock ? "rgba(0,255,153,0.15)" : "rgba(255,255,255,0.05)"));
+            ctx.strokeStyle = active ? "#9d4edd" : (canUnlock ? "rgba(0,255,153,0.5)" : "rgba(255,255,255,0.15)");
             ctx.lineWidth = 1;
-            rect(x, iy, itemW, itemH, 12, true, true);
-            
-            ctx.textAlign = "left"; 
+            rect(cx, chipsY, chipW, 32, 9, true, true);
+            ctx.textAlign = "center";
+            ctx.font = "bold 11px sans-serif";
+            ctx.fillStyle = col.unlocked ? "#FFF" : (canUnlock ? "#00FF99" : "#888");
+            ctx.fillText((col.unlocked ? pd.icon + ' ' : '🔒 ') + L(pd.name), cx + chipW / 2, chipsY + 13);
+            ctx.font = "9px sans-serif";
+            ctx.fillStyle = col.unlocked ? "#9db4d0" : (canUnlock ? "#00FF99" : "#6f7f9a");
+            let sub;
+            if (col.unlocked) sub = 'x' + formatNum(pd.outMult) + ' ' + (lang === 'ru' ? 'выработка' : 'output');
+            else if (!techOk) sub = '🔬 ' + t.planetLocked;
+            else sub = t.planetOpen + ': ' + formatNum(pd.unlockCrys) + ' 💎';
+            ctx.fillText(sub, cx + chipW / 2, chipsY + 26);
+            uiButton('planet_' + pi, cx, chipsY, chipW, 32);
+        });
+
+        let colBiz = curColony().biz;
+        let listTop = py + 78;
+        let visible = [];
+        for (let i = 0; i < colBiz.length; i++) {
+            if (bizVisible(i)) visible.push(i);
+            else break;
+        }
+
+        let itemH = 106, itemGap = 10;
+        let totalH = visible.length * (itemH + itemGap);
+        let info = listClip(px, listTop, pw, ph - (listTop - py), totalH);
+
+        visible.forEach((bi, idx) => {
+            let b = colBiz[bi];
+            let iy = listTop + idx * (itemH + itemGap) - game.listScroll;
+            if (iy + itemH < listTop || iy > py + ph) return;
+            let x = px + 10, w = pw - 20;
+
+            // Есть ли следующий невидимый бизнес — карточка-заглушка
+            let lockedNext = (idx === visible.length - 1 && bi + 1 < colBiz.length && !bizVisible(bi + 1));
+
+            let canBuy1 = game.crystals >= getBizCost(b, 1);
+            ctx.fillStyle = b.level > 0 ? "rgba(0, 255, 200, 0.10)" : "rgba(255, 255, 255, 0.05)";
+            ctx.strokeStyle = canBuy1 ? "rgba(0,255,153,0.55)" : "rgba(255,255,255,0.15)";
+            ctx.lineWidth = 1;
+            rect(x, iy, w, itemH, 12, true, true);
+
+            // Иконка
+            ctx.font = "30px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(b.def.icon, x + 34, iy + 40);
+
+            // Название + уровень
+            ctx.textAlign = "left";
             ctx.fillStyle = "#FFFFFF";
-            ctx.font = "bold 16px sans-serif"; 
-            ctx.fillText(upg.name, x + 15, iy + 25);
-            
-            ctx.font = "13px sans-serif"; 
-            ctx.fillStyle = "#CCCCCC"; 
-            ctx.fillText(upg.desc, x + 15, iy + 48);
-            
+            ctx.font = "bold 15px sans-serif";
+            ctx.fillText(L(b.def.name), x + 62, iy + 24);
+            ctx.font = "11px sans-serif";
+            ctx.fillStyle = "#9db4d0";
+            let out = b.def.baseOut * COLONY_DEFS[b.pi].outMult * b.level * game.cache.bizMult[b.def.id] *
+                game.cache.prestige * game.cache.boost * game.cache.eff;
+            out *= (b.def.produces === 'eggs') ? game.cache.prodEgg : game.cache.prodCrys;
+            let outTxt = b.def.produces === 'eggs' ? '🥚 ' : '💎 ';
+            outTxt += formatNum(out) + ' ' + t.perCycle;
+            let sp = bizSpeed(b);
+            if (sp > 1) outTxt += '  ⚡x' + sp;
+            ctx.fillText(outTxt, x + 62, iy + 42);
+
+            // Милстоун: сколько осталось до удвоения скорости
+            let next = MILESTONES.find(m => m > b.level);
+            ctx.font = "10px sans-serif";
+            ctx.fillStyle = "#6f7f9a";
+            if (next) {
+                ctx.fillText(t.msAt + ' ' + (next - b.level) + ' ' + t.lvl, x + 62, iy + 58);
+            } else {
+                ctx.fillText('⚡ MAX', x + 62, iy + 58);
+            }
+
+            // Прогресс текущего цикла производства
+            if (b.level > 0 && !(b.def.produces === 'eggs' && game.eggsStored >= game.cache.cap)) {
+                let prog = Math.min(1, b.t * sp / b.def.cycle);
+                ctx.fillStyle = "rgba(255,255,255,0.12)";
+                rect(x + 62, iy + 66, 130, 5, 3, true, false);
+                ctx.fillStyle = b.def.produces === 'eggs' ? '#00e5ff' : '#FFD700';
+                rect(x + 62, iy + 66, Math.max(2, 130 * prog), 5, 3, true, false);
+            } else if (b.def.produces === 'eggs' && game.eggsStored >= game.cache.cap && b.level > 0) {
+                ctx.fillStyle = '#FF7777'; ctx.font = "10px sans-serif";
+                ctx.fillText('⏸', x + 64, iy + 71);
+            }
+
+            // Стоимость и кнопка покупки
+            let amt = game.buyAmount === "Max" ? Math.max(1, getMaxAffordable(b)) : game.buyAmount;
+            let cost = getBizCost(b, amt);
+            let canBuy = game.crystals >= cost;
             ctx.textAlign = "right";
             ctx.fillStyle = canBuy ? "#00FF99" : "#FF5555";
-            ctx.font = "bold 16px sans-serif";
-            ctx.fillText(formatNum(cost), x + itemW - 15, iy + 25);
-            
-            ctx.fillStyle = "#FFD700"; 
-            ctx.font = "12px sans-serif";
-            ctx.fillText(t.level + " " + upg.level, x + itemW - 15, iy + 48);
-            
-            uiButton('upg_' + i, x, iy, itemW, itemH);
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText(formatNum(cost) + ' 💎', x + w - 108, iy + 30);
+            ctx.font = "10px sans-serif";
+            ctx.fillStyle = "#9db4d0";
+            ctx.fillText('x' + amt + (b.level > 0 ? '  |  ' + b.level + ' ' + t.lvl : ''), x + w - 108, iy + 46);
+
+            let grad = ctx.createLinearGradient(x + w - 104, iy, x + w - 12, iy + 52);
+            if (canBuy) { grad.addColorStop(0, "#10b981"); grad.addColorStop(1, "#059669"); }
+            else { grad.addColorStop(0, "#2a2a3a"); grad.addColorStop(1, "#1c1c28"); }
+            ctx.fillStyle = grad;
+            rect(x + w - 104, iy + 14, 92, 46, 10, true, false);
+            ctx.fillStyle = canBuy ? "#FFF" : "#888";
+            ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(t.buy, x + w - 58, iy + 42);
+            uiButton('biz_buy_' + bi, x + w - 104, iy + 14, 92, 46);
+
+            // Строка менеджера (v3.2): найм за кристаллы → производство x2
+            let mgr = MGR_DEFS.find(m => m.id === b.def.id);
+            if (game.mgrOwned[mgr.id]) {
+                ctx.textAlign = "left";
+                ctx.font = "bold 10px sans-serif";
+                ctx.fillStyle = "#00FF99";
+                ctx.fillText(mgr.icon + ' ' + L(mgr.name) + ' — ' + t.mgrHired, x + 62, iy + 99);
+            } else {
+                ctx.textAlign = "left";
+                ctx.font = "10px sans-serif";
+                ctx.fillStyle = "#6f7f9a";
+                ctx.fillText(mgr.icon + ' ' + L(mgr.role), x + 62, iy + 99);
+                let mAfford = game.crystals >= mgr.cost;
+                let mGrad = ctx.createLinearGradient(x + w - 104, iy + 64, x + w - 12, iy + 84);
+                if (mAfford) { mGrad.addColorStop(0, "#b8860b"); mGrad.addColorStop(1, "#8a6508"); }
+                else { mGrad.addColorStop(0, "#2a2a3a"); mGrad.addColorStop(1, "#1c1c28"); }
+                ctx.fillStyle = mGrad;
+                rect(x + w - 104, iy + 64, 92, 20, 9, true, false);
+                ctx.fillStyle = mAfford ? "#FFF" : "#888";
+                ctx.font = "bold 10px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText('👤 ' + formatNum(mgr.cost) + ' 💎', x + w - 58, iy + 78);
+                uiButton('mgr_' + b.def.id, x + w - 104, iy + 64, 92, 20);
+            }
+
+            // Подсказка о следующем бизнесе
+            if (lockedNext) {
+                let nb = colBiz[bi + 1];
+                ctx.textAlign = "left";
+                ctx.font = "11px sans-serif";
+                ctx.fillStyle = "#6f7f9a";
+                ctx.fillText('🔒 ' + L(nb.def.name) + ' — ' + formatNum(nb.def.baseCost * COLONY_DEFS[nb.pi].costMult * 0.3) + ' 💎 ' + (lang === 'ru' ? 'общего заработка' : 'total earned'), x + 62, iy + itemH + 8);
+            }
         });
 
-        ctx.restore();
-
-        if (totalH > ph - 45) {
-            let scrollBarH = (ph - 45) * (ph - 45) / totalH;
-            let scrollBarY = py + 45 + game.shopScroll * ((ph - 45 - scrollBarH) / maxScroll);
-            ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-            rect(px + pw - 8, scrollBarY, 4, scrollBarH, 2, true, false);
-        }
+        listScrollbar(px, listTop, pw, info, totalH);
     }
 
-    function drawQuestsTab(px, py, pw, ph) {
-        ctx.textAlign = "center"; ctx.fillStyle = "#FFD700"; ctx.font = "bold 15px sans-serif";
-        ctx.fillText(t.questRewardInfo, px + pw/2, py + 10);
-        ctx.fillStyle = "#FFF"; ctx.font = "13px sans-serif";
-        ctx.fillText(t.questsCompleted + game.quests.completedCount, px + pw/2, py + 35);
+    function drawUpgTab(px, py, pw, ph) {
+        let owned = UPG_DEFS.filter(u => game.upgOwned[u.id]).length;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#9db4d0";
+        ctx.font = "12px sans-serif";
+        ctx.fillText((lang === 'ru' ? 'Куплено: ' : 'Owned: ') + owned + ' / ' + UPG_DEFS.length, px + pw / 2, py + 16);
 
-        let allDone = game.quests.data.length > 0 && game.quests.data.every(q => q.done);
-        
-        game.quests.data.forEach((q, i) => {
-            let py2 = py + 60 + i * 75;
-            glassPanel(px + 10, py2, pw - 20, 60, 10, 0.1);
-            
-            ctx.textAlign = "left"; ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif";
-            ctx.fillText(q.text, px + 20, py2 + 22);
-            
-            let prog = Math.min(1, q.current / q.target);
-            ctx.fillStyle = "rgba(255,255,255,0.1)";
-            rect(px + 20, py2 + 35, pw - 40, 10, 5, true, false);
-            ctx.fillStyle = q.done ? "#00FF99" : "#9d4edd";
-            rect(px + 20, py2 + 35, (pw - 40) * prog, 10, 5, true, false);
-            
-            ctx.textAlign = "right"; ctx.fillStyle = "#FFF"; ctx.font = "11px sans-serif";
-            ctx.fillText(q.current + " / " + q.target, px + pw - 20, py2 + 22);
+        let items = UPG_DEFS.filter(u => !game.upgOwned[u.id]).sort((a, b) => a.cost - b.cost);
+        let itemH = 64, itemGap = 10;
+        let totalH = items.length * (itemH + itemGap);
+        let info = listClip(px, py + 28, pw, ph - 28, totalH);
+
+        if (items.length === 0) {
+            ctx.fillStyle = "#00FF99"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(lang === 'ru' ? 'Все улучшения куплены!' : 'All upgrades purchased!', px + pw / 2, py + 80);
+        }
+
+        items.forEach((u, i) => {
+            let iy = py + 28 + i * (itemH + itemGap) - game.listScroll;
+            if (iy + itemH < py + 28 || iy > py + ph) return;
+            let x = px + 10, w = pw - 20;
+            let canBuy = game.crystals >= u.cost;
+
+            ctx.fillStyle = canBuy ? "rgba(255, 215, 0, 0.08)" : "rgba(255, 255, 255, 0.05)";
+            ctx.strokeStyle = canBuy ? "rgba(255,215,0,0.5)" : "rgba(255,255,255,0.15)";
+            ctx.lineWidth = 1;
+            rect(x, iy, w, itemH, 12, true, true);
+
+            ctx.textAlign = "left";
+            ctx.fillStyle = "#FFFFFF";
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText(L(u.name), x + 15, iy + 25);
+            ctx.font = "11px sans-serif";
+            ctx.fillStyle = "#9db4d0";
+            ctx.fillText(L(u.desc), x + 15, iy + 46);
+
+            ctx.textAlign = "right";
+            ctx.fillStyle = canBuy ? "#FFD700" : "#FF5555";
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText(formatNum(u.cost) + ' 💎', x + w - 15, iy + 38);
+
+            uiButton('upg_' + u.id, x, iy, w, itemH);
         });
 
-        let btnY = py + 285;
-        if (allDone) {
-            ctx.fillStyle = "#FFD700"; rect(px + 10, btnY, pw - 20, 45, 10, true, false);
-            ctx.fillStyle = "#000"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center";
-            ctx.fillText(t.claim, px + pw/2, btnY + 28);
-            uiButton('claim_quests', px + 10, btnY, pw - 20, 45);
+        listScrollbar(px, py + 28, pw, info, totalH);
+    }
+
+    // --- Вкладка «Наука» (v3.1): исследование, реактор, дерево технологий ---
+    function drawSciTab(px, py, pw, ph) {
+        let y = py;
+        // Сводка по науке
+        ctx.textAlign = "left";
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillStyle = "#7ee8ff";
+        ctx.fillText('🧪 ' + formatNum(Math.floor(game.science)) + '  (+' + game.cache.sciPerSec.toFixed(1) + ' ' + t.perSec + ')', px + 12, y + 16);
+        ctx.font = "11px sans-serif";
+        ctx.fillStyle = "#9db4d0";
+        ctx.fillText((lang === 'ru' ? 'Науку дают Лаборатории и цели империи' : 'Labs and empire goals produce science') +
+            '  ·  ' + t.statsTechs + ': ' + techCount() + '/' + TECH_DEFS.length, px + 12, y + 32);
+        y += 40;
+
+        // Активное исследование
+        glassPanel(px + 10, y, pw - 20, 56, 10, 0.2);
+        if (game.tech.active) {
+            let def = TECH_DEFS.find(x => x.id === game.tech.active.id);
+            let dur = def ? def.dur : 1;
+            let prog = Math.max(0, Math.min(1, 1 - game.tech.active.left / dur));
+            ctx.font = "bold 13px sans-serif"; ctx.fillStyle = "#FFF"; ctx.textAlign = "left";
+            ctx.fillText('🔬 ' + (def ? L(def.name) : '?'), px + 22, y + 19);
+            ctx.font = "11px sans-serif"; ctx.fillStyle = "#9db4d0";
+            ctx.fillText(L(def.desc), px + 22, y + 35);
+            ctx.fillStyle = "rgba(255,255,255,0.12)";
+            rect(px + 22, y + 42, pw - 150, 7, 4, true, false);
+            ctx.fillStyle = "#7ee8ff";
+            rect(px + 22, y + 42, Math.max(3, (pw - 150) * prog), 7, 4, true, false);
+            ctx.textAlign = "right";
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 12px sans-serif";
+            ctx.fillText(Math.ceil(game.tech.active.left) + ' ' + t.secShort, px + pw - 118, y + 21);
+            let rc = rushCost();
+            let canRush = game.crystals >= rc;
+            ctx.fillStyle = canRush ? "#FFD700" : "rgba(255,255,255,0.12)";
+            rect(px + pw - 112, y + 7, 92, 42, 9, true, false);
+            ctx.fillStyle = canRush ? "#231a00" : "#888";
+            ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(t.rush, px + pw - 66, y + 23);
+            ctx.fillText(formatNum(rc) + ' 💎', px + pw - 66, y + 39);
+            uiButton('rush_research', px + pw - 112, y + 7, 92, 42);
         } else {
-            ctx.fillStyle = "#666"; ctx.font = "13px sans-serif"; ctx.textAlign = "center";
-            ctx.fillText(t.inProgress, px + pw/2, btnY + 28);
+            ctx.font = "12px sans-serif"; ctx.fillStyle = "#6f7f9a"; ctx.textAlign = "left";
+            ctx.fillText('🔬 ' + t.techIdle, px + 22, y + 32);
         }
+        y += 66;
+
+        // Реактор (энергосистема) + дерево технологий — единый скролл-список
+        let rows = [{ reactor: true }];
+        Object.keys(BRANCH_META).forEach(br => {
+            rows.push({ header: br });
+            TECH_DEFS.filter(x => x.br === br).forEach(td => rows.push({ tech: td }));
+        });
+        let rowH = 56, headH = 24, rowGap = 6;
+        let totalH = rows.reduce((s, r) => s + (r.header ? headH + rowGap : rowH + rowGap), 0);
+        let info = listClip(px, y, pw, py + ph - y, totalH);
+        let ry = y - game.listScroll;
+        rows.forEach(r => {
+            if (r.reactor) {
+                if (ry + rowH >= y && ry <= py + ph) {
+                    let effPct = Math.round(game.cache.eff * 100);
+                    let x = px + 10, w = pw - 20;
+                    ctx.fillStyle = "rgba(255,215,0,0.07)";
+                    ctx.strokeStyle = "rgba(255,215,0,0.4)";
+                    ctx.lineWidth = 1;
+                    rect(x, ry, w, rowH, 10, true, true);
+                    ctx.textAlign = "left";
+                    ctx.font = "bold 12px sans-serif";
+                    ctx.fillStyle = "#FFF";
+                    ctx.fillText(t.reactor + ' ' + t.reactorLvl + ' ' + game.reactor, x + 12, ry + 20);
+                    ctx.font = "10px sans-serif";
+                    ctx.fillStyle = effPct < 100 ? '#FF7777' : '#9db4d0';
+                    ctx.fillText(t.reactorPower + ': ⚡' + Math.round(game.cache.energyCap) + '   ' + t.reactorCons + ': ⚡' +
+                        Math.round(game.cache.consumption) + (effPct < 100 ? '   ' + effPct + '% — ' + t.effWarn : ''), x + 12, ry + 38);
+                    let rCost = reactorCost();
+                    let canR = game.crystals >= rCost;
+                    ctx.fillStyle = canR ? "#10b981" : "rgba(255,255,255,0.12)";
+                    rect(x + w - 92, ry + 7, 92, 42, 9, true, false);
+                    ctx.fillStyle = canR ? "#FFF" : "#888";
+                    ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
+                    ctx.fillText(t.reactorUp, x + w - 46, ry + 23);
+                    ctx.fillText(formatNum(rCost) + ' 💎', x + w - 46, ry + 39);
+                    uiButton('reactor_buy', x + w - 92, ry + 7, 92, 42);
+                }
+                ry += rowH + rowGap;
+            } else if (r.header) {
+                if (ry + headH >= y && ry <= py + ph) {
+                    ctx.font = "bold 12px sans-serif"; ctx.textAlign = "left";
+                    ctx.fillStyle = BRANCH_META[r.header].color;
+                    ctx.fillText('— ' + L(BRANCH_META[r.header].name).toUpperCase() + ' —', px + 14, ry + 16);
+                }
+                ry += headH + rowGap;
+            } else {
+                let td = r.tech;
+                if (ry + rowH >= y && ry <= py + ph) {
+                    let owned = !!game.tech.owned[td.id];
+                    let isActive = game.tech.active && game.tech.active.id === td.id;
+                    let locked = td.req && !game.tech.owned[td.req];
+                    let x = px + 10, w = pw - 20;
+                    ctx.fillStyle = owned ? "rgba(0,255,153,0.12)" :
+                        (isActive ? "rgba(126,232,255,0.14)" :
+                            (!locked && game.science >= td.cost ? "rgba(126,232,255,0.08)" : "rgba(255,255,255,0.05)"));
+                    ctx.strokeStyle = owned ? "rgba(0,255,153,0.5)" :
+                        (isActive ? "rgba(126,232,255,0.6)" :
+                            (!locked && game.science >= td.cost ? "rgba(126,232,255,0.45)" : "rgba(255,255,255,0.15)"));
+                    ctx.lineWidth = 1;
+                    rect(x, ry, w, rowH, 10, true, true);
+                    ctx.textAlign = "left";
+                    ctx.font = "bold 12px sans-serif";
+                    ctx.fillStyle = owned ? "#00FF99" : (locked ? "#6f7f9a" : "#FFF");
+                    ctx.fillText((owned ? '✅ ' : (locked ? '🔒 ' : '🔬 ')) + L(td.name), x + 12, ry + 20);
+                    ctx.font = "10px sans-serif";
+                    ctx.fillStyle = "#9db4d0";
+                    ctx.fillText(L(td.desc), x + 12, ry + 38);
+                    ctx.textAlign = "right";
+                    if (owned) {
+                        ctx.fillStyle = "#00FF99"; ctx.font = "bold 11px sans-serif";
+                        ctx.fillText('✓', x + w - 16, ry + 24);
+                    } else if (isActive) {
+                        ctx.fillStyle = "#7ee8ff"; ctx.font = "bold 11px sans-serif";
+                        ctx.fillText(Math.ceil(game.tech.active.left) + ' ' + t.secShort, x + w - 12, ry + 20);
+                        let pr = Math.max(0, Math.min(1, 1 - game.tech.active.left / td.dur));
+                        ctx.fillStyle = "rgba(255,255,255,0.12)";
+                        rect(x + w - 92, ry + 30, 80, 6, 3, true, false);
+                        ctx.fillStyle = "#7ee8ff";
+                        rect(x + w - 92, ry + 30, Math.max(2, 80 * pr), 6, 3, true, false);
+                    } else if (locked) {
+                        ctx.fillStyle = "#6f7f9a"; ctx.font = "10px sans-serif";
+                        let rd = TECH_DEFS.find(z => z.id === td.req);
+                        let reqTxt = t.techReq + (rd ? L(rd.name) : '');
+                        while (ctx.measureText(reqTxt).width > w - 24 && reqTxt.length > 8) reqTxt = reqTxt.slice(0, reqTxt.length - 2);
+                        ctx.fillText(reqTxt, x + w - 12, ry + 24);
+                    } else {
+                        ctx.fillStyle = game.science >= td.cost ? "#7ee8ff" : "#FF7777";
+                        ctx.font = "bold 11px sans-serif";
+                        ctx.fillText('🧪 ' + formatNum(td.cost), x + w - 12, ry + 20);
+                        ctx.font = "10px sans-serif"; ctx.fillStyle = "#9db4d0";
+                        ctx.fillText(td.dur < 60 ? '<1 ' + (lang === 'ru' ? 'мин' : 'min') : Math.ceil(td.dur / 60) + ' ' + (lang === 'ru' ? 'мин' : 'min'), x + w - 12, ry + 38);
+                        uiButton('tech_' + td.id, x, ry, w, rowH);
+                    }
+                }
+                ry += rowH + rowGap;
+            }
+        });
+        listScrollbar(px, y, pw, info, totalH);
     }
 
-    function drawStatsTab(px, py, pw, ph) {
-        ctx.textAlign = "left"; ctx.fillStyle = "#FFF"; ctx.font = "15px sans-serif";
-        let stats = [
-            t.totalClicks + ": " + formatNum(game.totalClicks),
-            t.totalDust + ": " + formatNum(game.totalDust),
-            t.meteorsCaught + ": " + game.meteorsCaught,
-            t.playTime + ": " + formatTime((Date.now() - game.startTime) / 1000)
+    function drawStatTab(px, py, pw, ph) {
+        let lines = [
+            t.statsTotal + ": " + formatNum(game.totalCrystals) + ' 💎',
+            t.statsRun + ": " + formatNum(game.runCrystals) + ' 💎',
+            t.statsEggs + ": " + formatNum(Math.floor(game.eggsProduced)) + ' 🥚',
+            t.statsSold + ": " + formatNum(Math.floor(game.eggsSold)) + ' 🥚',
+            t.statsContracts + ": " + game.contractsDone,
+            t.statsEvents + ": " + game.eventsCaught,
+            t.statsMgrs + ": " + MGR_DEFS.filter(m => game.mgrOwned[m.id]).length + '/' + MGR_DEFS.length,
+            t.statsTechs + ": " + techCount() + '/' + TECH_DEFS.length,
+            t.statsMissions + ": " + Math.min(game.missionIdx, MISSION_DEFS.length) + '/' + MISSION_DEFS.length,
+            t.statsPlanets + ": " + game.colonies.filter(c => c.unlocked).length + '/' + COLONY_DEFS.length,
+            t.statsTime + ": " + formatTime((Date.now() - game.startTime) / 1000)
         ];
-        stats.forEach((s, i) => ctx.fillText(s, px + 20, py + 30 + i * 35));
+        let y0 = py + 10;
+        let achvRows = Math.ceil(ACHV_DEFS.length / 2);
+        let totalH = 20 + lines.length * 22 + 26 + 72 + 20 + achvRows * 18 + 16;
+        let info = listClip(px, py, pw, ph, totalH);
+        let y = y0 - game.listScroll;
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#cfe9ff"; ctx.font = "13px sans-serif";
+        lines.forEach((s, i) => {
+            let ly = y + 20 + i * 22;
+            if (ly > py - 20 && ly < py + ph + 20) ctx.fillText(s, px + 20, ly);
+        });
+        y += 20 + lines.length * 22 + 6;
+
+        // Осколки и престиж
+        if (y + 60 > py && y < py + ph) {
+            ctx.fillStyle = "#FFD700"; ctx.font = "bold 14px sans-serif";
+            ctx.fillText('⭐ ' + t.shardsLbl + ': ' + game.shards + '   (+' + (game.shards * 10) + '%)', px + 20, y + 8);
+        }
+        y += 20;
+
+        let gain = prestigeGain();
+        let btnY = y + 10, btnH = 56;
+        let bw = pw - 40, bx = px + 20;
+        if (btnY + btnH > py && btnY < py + ph) {
+            if (gain > 0) {
+                let grad = ctx.createLinearGradient(bx, btnY, bx + bw, btnY + btnH);
+                grad.addColorStop(0, "#f5b30a"); grad.addColorStop(1, "#b45309");
+                ctx.fillStyle = grad;
+                rect(bx, btnY, bw, btnH, 12, true, false);
+                ctx.fillStyle = "#FFF"; ctx.textAlign = "center";
+                ctx.font = "bold 15px sans-serif";
+                ctx.fillText(t.prestige, bx + bw / 2, btnY + 24);
+                ctx.font = "bold 12px sans-serif";
+                ctx.fillText(t.prestigeGain + ' +' + gain + ' ⭐', bx + bw / 2, btnY + 44);
+                uiButton('prestige_open', bx, btnY, bw, btnH);
+            } else {
+                ctx.fillStyle = "rgba(255,255,255,0.08)";
+                rect(bx, btnY, bw, btnH, 12, true, false);
+                ctx.fillStyle = "#888"; ctx.textAlign = "center";
+                ctx.font = "bold 13px sans-serif";
+                ctx.fillText(t.prestige, bx + bw / 2, btnY + 24);
+                ctx.font = "11px sans-serif";
+                ctx.fillText(t.prestigeNeed, bx + bw / 2, btnY + 44);
+            }
+        }
+        y = btnY + btnH + 16;
+
+        // Достижения
+        if (y + 20 > py && y < py + ph) {
+            ctx.fillStyle = "#FFD700"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "left";
+            ctx.fillText(t.achvLbl + "  " + ACHV_DEFS.filter(a => game.achv[a.id]).length + "/" + ACHV_DEFS.length, px + 20, y + 8);
+        }
+        y += 14;
+        ctx.font = "11px sans-serif";
+        ACHV_DEFS.forEach((a, i) => {
+            let col = i % 2, row = Math.floor(i / 2);
+            let ly = y + row * 20;
+            if (ly <= py - 20 || ly > py + ph + 20) return;
+            let done = !!game.achv[a.id];
+            ctx.fillStyle = done ? "#00FF99" : "#666";
+            ctx.fillText((done ? "+" : "-") + " " + (lang === 'ru' ? a.ru : a.en), px + 20 + col * ((pw - 40) / 2), ly);
+        });
+        listScrollbar(px, py, pw, info, totalH);
     }
 
     function drawPanelBottomButtons(px, py, pw) {
@@ -1013,8 +2179,8 @@
             grad.addColorStop(1, b.color2);
             ctx.fillStyle = grad;
             rect(x, py, btnW, btnH, 12, true, false);
-            ctx.fillStyle = "#FFF"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-            ctx.fillText(b.text, x + btnW/2, py + 28);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(b.text, x + btnW / 2, py + 27);
             uiButton('ad_' + b.action, x, py, btnW, btnH);
         });
 
@@ -1025,85 +2191,117 @@
         ctx.fillStyle = grad;
         rect(px + 10, rBtnY, pw - 20, btnH, 12, true, false);
         ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
-        ctx.fillText("🎰 " + t.roulette, px + pw/2, rBtnY + 28);
+        ctx.fillText("🎰 " + t.lottery, px + pw / 2, rBtnY + 28);
         uiButton('ad_roulette', px + 10, rBtnY, pw - 20, btnH);
     }
+
+    const ROULETTE_PRIZES = () => [
+        "x2", lang === 'ru' ? "💎" : "💎", "x2", lang === 'ru' ? "Пусто" : "Empty",
+        "JACKPOT", lang === 'ru' ? "Пусто" : "Empty", "x2", lang === 'ru' ? "💎" : "💎"
+    ];
 
     function drawModal() {
         ctx.fillStyle = "rgba(0,0,0,0.85)";
         ctx.fillRect(0, 0, W, H);
-        let mW = W * 0.85, mH = H * 0.7, mX = W/2 - mW/2, mY = H/2 - mH/2;
-        glassPanel(mX, mY, mW, mH, 20, 0.1);
-        
-        ctx.fillStyle = "#FFF"; ctx.textAlign = "center"; ctx.font = "bold 24px sans-serif";
-        ctx.fillText(t.roulette, W/2, mY + 40);
+        let mW = W * 0.86, mX = W / 2 - mW / 2;
 
-        let cX = W/2, cY = mY + mH/2 - 20, r = Math.min(mW, mH) * 0.3;
-        let colors = ["#FFD700", "#3a0ca3", "#FFD700", "#3a0ca3", "#FF00FF", "#3a0ca3", "#FFD700", "#3a0ca3"];
-        let prizes = ["x2", lang === 'ru' ? "Пыль" : "Dust", "x2", lang === 'ru' ? "Пусто" : "Empty", lang === 'ru' ? "ДЖ" : "JACK", lang === 'ru' ? "Пусто" : "Empty", "x2", lang === 'ru' ? "Пыль" : "Dust"];
-        
-        for(let i=0; i<8; i++) {
-            let startAngle = (i * Math.PI / 4) + (game.rouletteAngle * Math.PI / 180);
-            let endAngle = startAngle + Math.PI / 4;
+        if (game.modal === 'roulette') {
+            let mH = H * 0.7, mY = H / 2 - mH / 2;
+            glassPanel(mX, mY, mW, mH, 20, 0.1);
+            ctx.fillStyle = "#FFF"; ctx.textAlign = "center"; ctx.font = "bold 24px sans-serif";
+            ctx.fillText("🎰 " + t.lottery, W / 2, mY + 40);
+
+            let cX = W / 2, cY = mY + mH / 2 - 10, r = Math.min(mW, mH) * 0.3;
+            let colors = ["#FFD700", "#3a0ca3", "#FFD700", "#3a0ca3", "#FF00FF", "#3a0ca3", "#FFD700", "#3a0ca3"];
+            let prizes = ROULETTE_PRIZES();
+
+            for (let i = 0; i < 8; i++) {
+                let startAngle = (i * Math.PI / 4) + (game.rouletteAngle * Math.PI / 180);
+                let endAngle = startAngle + Math.PI / 4;
+                ctx.beginPath();
+                ctx.moveTo(cX, cY);
+                ctx.arc(cX, cY, r, startAngle, endAngle);
+                ctx.fillStyle = colors[i]; ctx.fill();
+                ctx.strokeStyle = "#FFF"; ctx.lineWidth = 2; ctx.stroke();
+
+                ctx.save();
+                ctx.translate(cX, cY);
+                ctx.rotate(startAngle + Math.PI / 8);
+                ctx.fillStyle = "#FFF"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "right";
+                ctx.fillText(prizes[i], r - 10, 5);
+                ctx.restore();
+            }
+
+            ctx.fillStyle = "#FFF";
             ctx.beginPath();
-            ctx.moveTo(cX, cY);
-            ctx.arc(cX, cY, r, startAngle, endAngle);
-            ctx.fillStyle = colors[i]; ctx.fill();
-            ctx.strokeStyle = "#FFF"; ctx.lineWidth = 2; ctx.stroke();
-            
-            ctx.save();
-            ctx.translate(cX, cY);
-            ctx.rotate(startAngle + Math.PI / 8);
-            ctx.fillStyle = "#FFF"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "right";
-            ctx.fillText(prizes[i], r - 10, 5);
-            ctx.restore();
-        }
-        
-        ctx.fillStyle = "#FFF";
-        ctx.beginPath(); 
-        ctx.moveTo(cX, cY - r - 10); 
-        ctx.lineTo(cX - 10, cY - r + 10); 
-        ctx.lineTo(cX + 10, cY - r + 10); 
-        ctx.closePath(); 
-        ctx.fill();
+            ctx.moveTo(cX, cY - r - 10);
+            ctx.lineTo(cX - 10, cY - r + 10);
+            ctx.lineTo(cX + 10, cY - r + 10);
+            ctx.closePath();
+            ctx.fill();
 
-        let btnY = mY + mH - 50;
-        if (game.rouletteResult) {
-            ctx.fillStyle = "#FFD700"; ctx.font = "bold 18px sans-serif";
-            ctx.fillText(t.won + " " + game.rouletteResult, W/2, btnY - 15);
+            let btnY = mY + mH - 50;
+            if (game.rouletteResult) {
+                ctx.fillStyle = "#FFD700"; ctx.font = "bold 18px sans-serif";
+                ctx.fillText(t.won + " " + game.rouletteResult, W / 2, btnY - 15);
 
-            let btnW = 140, btnGap = 20;
-            let totalW = btnW * 2 + btnGap;
-            let startX = W/2 - totalW/2;
+                let btnW = 140, btnGap = 20;
+                let totalW = btnW * 2 + btnGap;
+                let startX = W / 2 - totalW / 2;
 
-            ctx.fillStyle = "#555"; rect(startX, btnY, btnW, 40, 10, true, false);
-            ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.fillText(t.close, startX + btnW/2, btnY + 25);
-            uiButton('close_modal', startX, btnY, btnW, 40);
+                ctx.fillStyle = "#555"; rect(startX, btnY, btnW, 40, 10, true, false);
+                ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.fillText(t.close, startX + btnW / 2, btnY + 25);
+                uiButton('close_modal', startX, btnY, btnW, 40);
 
-            if (adsUI) {
-                let x2 = startX + btnW + btnGap;
-                let grad = ctx.createLinearGradient(x2, btnY, x2 + btnW, btnY);
-                grad.addColorStop(0, "#f59e0b"); grad.addColorStop(1, "#d97706");
-                ctx.fillStyle = grad; rect(x2, btnY, btnW, 40, 10, true, false);
-                ctx.fillStyle = "#FFF"; ctx.font = "bold 12px sans-serif"; ctx.fillText(t.spinAgain, x2 + btnW/2, btnY + 25);
-                uiButton('spin_again', x2, btnY, btnW, 40);
+                if (adsUI) {
+                    let x2 = startX + btnW + btnGap;
+                    let grad = ctx.createLinearGradient(x2, btnY, x2 + btnW, btnY);
+                    grad.addColorStop(0, "#f59e0b"); grad.addColorStop(1, "#d97706");
+                    ctx.fillStyle = grad; rect(x2, btnY, btnW, 40, 10, true, false);
+                    ctx.fillStyle = "#FFF"; ctx.font = "bold 12px sans-serif"; ctx.fillText(t.spinAgain, x2 + btnW / 2, btnY + 25);
+                    uiButton('spin_again', x2, btnY, btnW, 40);
+                }
+            } else if (!game.rouletteSpinning) {
+                let btnW = 180;
+                let grad = ctx.createLinearGradient(W / 2 - btnW / 2, btnY, W / 2 + btnW / 2, btnY);
+                if (game.freeSpins > 0) { grad.addColorStop(0, "#10b981"); grad.addColorStop(1, "#059669"); }
+                else { grad.addColorStop(0, "#f59e0b"); grad.addColorStop(1, "#d97706"); }
+                ctx.fillStyle = grad; rect(W / 2 - btnW / 2, btnY, btnW, 40, 10, true, false);
+                ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif";
+                ctx.fillText(game.freeSpins > 0 ? t.freeSpin + " (" + game.freeSpins + ")" : t.spinAd, W / 2, btnY + 25);
+                uiButton('spin_roulette', W / 2 - btnW / 2, btnY, btnW, 40);
             }
+        } else if (game.modal === 'prestige') {
+            let mH = Math.min(H * 0.55, 360), mY = H / 2 - mH / 2;
+            glassPanel(mX, mY, mW, mH, 20, 0.12);
 
-        } else if (!game.rouletteSpinning && adsUI) {
-            let btnW = 180;
-            if (game.freeSpins > 0) {
-                let grad = ctx.createLinearGradient(W/2 - btnW/2, btnY, W/2 + btnW/2, btnY);
-                grad.addColorStop(0, "#10b981"); grad.addColorStop(1, "#059669");
-                ctx.fillStyle = grad; rect(W/2 - btnW/2, btnY, btnW, 40, 10, true, false);
-                ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.fillText(t.freeSpin + " ("+game.freeSpins+")", W/2, btnY + 25);
-                uiButton('spin_roulette', W/2 - btnW/2, btnY, btnW, 40);
-            } else {
-                let grad = ctx.createLinearGradient(W/2 - btnW/2, btnY, W/2 + btnW/2, btnY);
-                grad.addColorStop(0, "#f59e0b"); grad.addColorStop(1, "#d97706");
-                ctx.fillStyle = grad; rect(W/2 - btnW/2, btnY, btnW, 40, 10, true, false);
-                ctx.fillStyle = "#FFF"; ctx.font = "bold 14px sans-serif"; ctx.fillText(t.spinAd, W/2, btnY + 25);
-                uiButton('spin_roulette', W/2 - btnW/2, btnY, btnW, 40);
-            }
+            ctx.fillStyle = "#FFD700"; ctx.textAlign = "center"; ctx.font = "bold 22px sans-serif";
+            ctx.fillText(t.prestige, W / 2, mY + 46);
+
+            ctx.fillStyle = "#cfe9ff"; ctx.font = "13px sans-serif";
+            t.prestigeLines.forEach((line, i) => {
+                ctx.fillText(line, W / 2, mY + 84 + i * 22);
+            });
+
+            let gain = prestigeGain();
+            ctx.fillStyle = "#00FF99"; ctx.font = "bold 17px sans-serif";
+            ctx.fillText(t.prestigeGain + ' +' + gain + ' ⭐', W / 2, mY + mH - 108);
+
+            let btnW = mW * 0.42, btnH = 46, gap = 20;
+            let startY = mY + mH - 70;
+            let grad = ctx.createLinearGradient(mX + mW / 2 - btnW - gap / 2, startY, mX + mW / 2 - gap / 2, startY + btnH);
+            grad.addColorStop(0, "#f5b30a"); grad.addColorStop(1, "#b45309");
+            ctx.fillStyle = grad;
+            rect(mX + mW / 2 - btnW - gap / 2, startY, btnW, btnH, 12, true, false);
+            ctx.fillStyle = "#231a00"; ctx.font = "bold 15px sans-serif";
+            ctx.fillText(t.prestigeConfirm, mX + mW / 2 - gap / 2 - btnW / 2, startY + 30);
+            uiButton('prestige_confirm', mX + mW / 2 - btnW - gap / 2, startY, btnW, btnH);
+
+            ctx.fillStyle = "#444";
+            rect(mX + mW / 2 + gap / 2, startY, btnW, btnH, 12, true, false);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 15px sans-serif";
+            ctx.fillText(t.prestigeCancel, mX + mW / 2 + gap / 2 + btnW / 2, startY + 30);
+            uiButton('prestige_cancel', mX + mW / 2 + gap / 2, startY, btnW, btnH);
         }
     }
 
@@ -1126,20 +2324,24 @@
     }
 
     // ====================================================================================
-    // 6. INPUT HANDLING
+    // 9. ВВОД
     // ====================================================================================
+    const MODAL_IDS = ['close_modal', 'spin_again', 'spin_roulette', 'prestige_confirm', 'prestige_cancel'];
+
     function handleInput(e) {
         e.preventDefault(); initAudio();
         if (game.shopTouchActive) return;
-        
+
         let clientX = e.clientX || (e.touches && e.touches[0].clientX);
         let clientY = e.clientY || (e.touches && e.touches[0].clientY);
         let x = clientX - canvas.getBoundingClientRect().left;
         let y = clientY - canvas.getBoundingClientRect().top;
 
-        for(let i=game.uiElements.length-1; i>=0; i--) {
+        for (let i = game.uiElements.length - 1; i >= 0; i--) {
             let ui = game.uiElements[i];
             if (x >= ui.x && x <= ui.x + ui.w && y >= ui.y && y <= ui.y + ui.h) {
+                // В открытой модалке кликаются только кнопки модалки
+                if (game.modal && MODAL_IDS.indexOf(ui.id) < 0) continue;
                 handleUIClick(ui.id);
                 return;
             }
@@ -1147,8 +2349,8 @@
     }
 
     canvas.addEventListener('wheel', (e) => {
-        if (game.currentTab === 'shop' && game.uiPanelOpen) {
-            game.shopScrollTarget += e.deltaY * 0.5;
+        if ((game.currentTab === 'biz' || game.currentTab === 'up' || game.currentTab === 'sci' || game.currentTab === 'stat') && game.uiPanelOpen) {
+            game.listScrollTarget += e.deltaY * 0.5;
         }
     });
 
@@ -1158,14 +2360,14 @@
         touchStartX = e.touches[0].clientX;
         game.shopTouchActive = false;
     }, { passive: false });
-    
+
     canvas.addEventListener('touchmove', (e) => {
         e.preventDefault();
-        if (game.currentTab === 'shop' && game.uiPanelOpen) {
+        if ((game.currentTab === 'biz' || game.currentTab === 'up' || game.currentTab === 'sci' || game.currentTab === 'stat') && game.uiPanelOpen) {
             let deltaY = touchStartY - e.touches[0].clientY;
             let deltaX = touchStartX - e.touches[0].clientX;
             if (Math.abs(deltaY) > 10 && Math.abs(deltaY) > Math.abs(deltaX)) {
-                game.shopScrollTarget += deltaY;
+                game.listScrollTarget += deltaY;
                 touchStartY = e.touches[0].clientY;
                 game.shopTouchActive = true;
             }
@@ -1175,68 +2377,93 @@
     canvas.addEventListener('touchend', () => {
         setTimeout(() => { game.shopTouchActive = false; }, 100);
     });
-    
+
     function handleUIClick(id) {
-        if (id === 'egg') { 
-            let playW = game.isMobile ? W : (W - 340);
-            clickEgg(playW/2, H/2 - 30); 
-            return; 
+        if (id === 'egg') {
+            let playW = game.isMobile ? W : (W - 360);
+            tapCore(playW / 2, H / 2 - 10);
+            return;
         }
-        if (id === 'toggle_menu') { 
+        if (id.startsWith('mgr_')) { hireManager(id.slice(4)); return; }
+        if (id === 'toggle_menu') {
             if (game.isMobile) {
                 game.uiPanelOpen = !game.uiPanelOpen;
-                if (game.uiPanelOpen) game.currentTab = 'shop';
+                if (game.uiPanelOpen) game.currentTab = 'biz';
             }
-            return; 
+            return;
         }
-        if (id === 'lang_toggle') { 
-            setLanguage(lang === 'ru' ? 'en' : 'ru');
-            return; 
-        }
+        if (id === 'lang_toggle') { setLanguage(lang === 'ru' ? 'en' : 'ru'); saveGame().catch(() => {}); return; }
         if (id === 'sound') { soundEnabled = !soundEnabled; return; }
         if (id.startsWith('meteor_')) { clickMeteor(game.meteors[parseInt(id.split('_')[1])]); return; }
-        if (id.startsWith('tab_')) { game.currentTab = id.split('_')[1]; return; }
-        if (id.startsWith('buy_amt_')) { 
-            let amts = [1, 10, 25, "Max"]; 
-            game.buyAmount = amts[parseInt(id.split('_')[2])]; 
-            return; 
+        if (id.startsWith('tab_')) { game.currentTab = id.split('_')[1]; game.listScroll = 0; game.listScrollTarget = 0; return; }
+        if (id.startsWith('buy_amt_')) {
+            let amts = [1, 10, 100, "Max"];
+            game.buyAmount = amts[parseInt(id.split('_')[2])];
+            return;
         }
-        if (id.startsWith('upg_')) { buyUpgrade(parseInt(id.split('_')[1])); return; }
-        if (id === 'claim_quests') { claimQuests(); return; }
-        if (id === 'close_modal') { 
-            game.modal = null; 
+        if (id.startsWith('biz_buy_')) { buyBusiness(parseInt(id.split('_')[2]), game.buyAmount); return; }
+        if (id.startsWith('upg_')) { buyUpgrade(id.slice(4)); return; }
+        if (id.startsWith('tech_')) { research(id.slice(5)); return; }
+        if (id === 'rush_research') { rushResearch(); return; }
+        if (id === 'reactor_buy') { buyReactor(); return; }
+        if (id.startsWith('planet_')) {
+            let pi = parseInt(id.split('_')[1]);
+            if (game.colonies[pi].unlocked) selectPlanet(pi);
+            else if (!unlockColony(pi) && game.crystals >= COLONY_DEFS[pi].unlockCrys) {
+                // Кристаллов хватает, но нет технологии — подсказываем
+                pushToast('🔬 ' + t.planetLocked);
+            }
+            return;
+        }
+        if (id === 'mission_bar') { game.currentTab = 'stat'; game.uiPanelOpen = true; game.listScroll = 0; game.listScrollTarget = 0; return; }
+        // Ручной продажи больше нет (v3.2): Робот-кассир продаёт сам
+        if (id === 'contract_claim') { claimContract(); return; }
+        if (id === 'close_modal') {
+            game.modal = null;
             game.rouletteResult = null;
             showInterstitial();
-            return; 
+            return;
         }
         if (id === 'spin_roulette') { spinRoulette(); return; }
-        if (id === 'spin_again') { showRewarded('roulette'); return; } 
+        if (id === 'spin_again') { showRewarded('roulette'); return; }
         if (id === 'ad_boost') { showRewarded('boost'); return; }
         if (id === 'ad_offline') { showRewarded('offline'); return; }
         if (id === 'ad_roulette') { game.modal = 'roulette'; return; }
+        if (id === 'event_comet') { hitComet(); return; }
+        if (id === 'event_ufo') { hitUfo(); return; }
+        if (id === 'prestige_open') { game.modal = 'prestige'; return; }
+        if (id === 'prestige_confirm') { game.modal = null; doPrestige(); return; }
+        if (id === 'prestige_cancel') { game.modal = null; return; }
     }
 
     canvas.addEventListener('mousedown', handleInput);
     canvas.addEventListener('touchstart', handleInput, { passive: false });
 
     // ====================================================================================
-    // 7. SAVE & LOAD — С ПОЛНОЙ ЗАЩИТОЙ ОТ ОШИБОК
+    // 10. SAVE & LOAD — С ПОЛНОЙ ЗАЩИТОЙ ОТ ОШИБОК
     // ====================================================================================
-    
-    // Компактный сейв: только нужные данные (лимит VK Storage — 8192 символа)
+
+    // Компактный сейв (лимит VK Storage — 8192 символа)
     function buildSave() {
         return JSON.stringify({
-            v: 12,
-            dust: game.dust,
-            totalDust: game.totalDust,
-            totalClicks: game.totalClicks,
-            meteorsCaught: game.meteorsCaught,
-            startTime: game.startTime,
-            lastSave: game.lastSave,
-            freeSpins: game.freeSpins,
-            lastSpinReset: game.lastSpinReset,
-            quests: game.quests,
-            upgrades: game.upgrades.map(u => ({ level: u.level }))
+            v: 32,
+            lang: lang,
+            crystals: Math.floor(game.crystals), runCrystals: Math.floor(game.runCrystals),
+            totalCrystals: Math.floor(game.totalCrystals),
+            eggsStored: Math.floor(game.eggsStored), eggsProduced: Math.floor(game.eggsProduced),
+            eggsSold: Math.floor(game.eggsSold),
+            science: Math.floor(game.science),
+            tech: game.tech, reactor: game.reactor,
+            colonies: game.colonies.map(c => ({ u: c.unlocked ? 1 : 0, biz: c.biz.map(b => ({ l: b.level, t: b.t })) })),
+            activePlanet: game.activePlanet,
+            missionIdx: game.missionIdx, spinsDone: game.spinsDone,
+            upgOwned: game.upgOwned,
+            mgrOwned: game.mgrOwned,
+            contract: game.contract, contractsDone: game.contractsDone,
+            shards: game.shards, prestiges: game.prestiges,
+            stats: game.stats, achv: game.achv,
+            freeSpins: game.freeSpins, lastSpinReset: game.lastSpinReset,
+            startTime: game.startTime, lastSave: game.lastSave
         });
     }
 
@@ -1247,84 +2474,123 @@
             // Шаг 1: локальное сохранение (всегда, мгновенно)
             localStorage.setItem(SAVE_KEY, saveStr);
             // Шаг 2: облачное сохранение в хранилище VK
-            if (vk) { 
-                await vk.send('VKWebAppStorageSet', { key: SAVE_KEY, value: saveStr }); 
+            if (vk) {
+                await vk.send('VKWebAppStorageSet', { key: SAVE_KEY, value: saveStr });
             }
-        } catch(e) {
+        } catch (e) {
             console.error("saveGame error:", e);
-            throw e; // Пробрасываем дальше для catch в setInterval
+            throw e;
         }
     }
 
-    // loadGame() полностью защищена от падений
     async function loadGame() {
-        initUpgrades();
         let saveData = null;
-        
+
         // Шаг 1: Пробуем загрузить из облачного хранилища VK
         if (vk) {
-            try { 
-                let d = await vk.send('VKWebAppStorageGet', { key: SAVE_KEY }); 
+            try {
+                let d = await vk.send('VKWebAppStorageGet', { key: SAVE_KEY });
                 let val = d && d.keys && d.keys[0] && d.keys[0].value;
-                if (val) saveData = JSON.parse(val); 
-            } catch(e) {
+                if (val) saveData = JSON.parse(val);
+            } catch (e) {
                 console.warn("VK StorageGet error, trying localStorage:", e);
             }
         }
-        
+
         // Шаг 2: Фолбэк на localStorage (с защитой от битого JSON!)
-        if (!saveData) { 
+        if (!saveData) {
             try {
-                let ls = localStorage.getItem(SAVE_KEY); 
-                if (ls) saveData = JSON.parse(ls); 
-            } catch(e) {
+                let ls = localStorage.getItem(SAVE_KEY);
+                if (ls) saveData = JSON.parse(ls);
+            } catch (e) {
                 // КРИТИЧНО: удаляем битый сейв, иначе будем падать при каждой загрузке
                 console.error("Corrupted localStorage save, wiping it:", e);
                 localStorage.removeItem(SAVE_KEY);
             }
         }
 
-        if (saveData) {
-            game.dust = saveData.dust || 0; 
-            game.totalDust = saveData.totalDust || 0;
-            game.totalClicks = saveData.totalClicks || 0; 
-            game.meteorsCaught = saveData.meteorsCaught || 0;
+        // v32 — текущий формат; v31 (v3.1) мигрирует: mgrOwned стартует пустым
+        if (saveData && (saveData.v === 32 || saveData.v === 31)) {
+            game.crystals = saveData.crystals || 0;
+            game.runCrystals = saveData.runCrystals || 0;
+            game.totalCrystals = saveData.totalCrystals || 0;
+            game.eggsStored = saveData.eggsStored || 0;
+            game.eggsProduced = saveData.eggsProduced || 0;
+            game.eggsSold = saveData.eggsSold || 0;
+            game.science = saveData.science || 0;
+            game.tech = { owned: (saveData.tech && saveData.tech.owned) || {}, active: (saveData.tech && saveData.tech.active) || null };
+            if (game.tech.active && !TECH_DEFS.find(x => x.id === game.tech.active.id)) game.tech.active = null;
+            game.reactor = saveData.reactor || 0;
+            if (Array.isArray(saveData.colonies)) {
+                saveData.colonies.forEach((sc, pi) => {
+                    if (!game.colonies[pi]) return;
+                    game.colonies[pi].unlocked = !!sc.u;
+                    if (Array.isArray(sc.biz)) {
+                        sc.biz.forEach((sb, bi) => {
+                            if (game.colonies[pi].biz[bi]) {
+                                game.colonies[pi].biz[bi].level = sb.l || 0;
+                                game.colonies[pi].biz[bi].t = sb.t || 0;
+                            }
+                        });
+                    }
+                });
+            }
+            game.activePlanet = (saveData.activePlanet >= 0 && saveData.activePlanet < COLONY_DEFS.length) ? saveData.activePlanet : 0;
+            if (!game.colonies[game.activePlanet].unlocked) game.activePlanet = 0;
+            game.missionIdx = saveData.missionIdx || 0;
+            game.spinsDone = saveData.spinsDone || 0;
+            game.upgOwned = saveData.upgOwned || {};
+            game.mgrOwned = saveData.mgrOwned || {};
+            game.contract = (saveData.contract && saveData.contract.need) ? saveData.contract : null;
+            game.contractCooldown = game.contract ? 0 : 5;
+            game.contractsDone = saveData.contractsDone || 0;
+            game.shards = saveData.shards || 0;
+            game.prestiges = saveData.prestiges || 0;
+            game.stats = saveData.stats || { taps: 0 };
+            game.achv = saveData.achv || {};
+            game.freeSpins = saveData.freeSpins || 1;
+            game.lastSpinReset = saveData.lastSpinReset || Date.now();
             game.startTime = saveData.startTime || Date.now();
             game.lastSave = saveData.lastSave || Date.now();
-            game.freeSpins = saveData.freeSpins || 1; 
-            game.lastSpinReset = saveData.lastSpinReset || Date.now();
-            
-            if (saveData.quests && saveData.quests.data && saveData.quests.data.length > 0) {
-                game.quests = saveData.quests;
-            } else {
-                generateNewQuests();
-            }
-
-            if (saveData.upgrades) {
-                saveData.upgrades.forEach((su, i) => { 
-                    if (game.upgrades[i]) game.upgrades[i].level = su.level; 
-                });
-            }
+            if (saveData.lang) setLanguage(saveData.lang);
+            // Достижения, выполненные ещё до обновления, отмечаем без награды
             recalcStats();
-            
+            ACHV_DEFS.forEach(a => { if (!game.achv[a.id] && a.test()) game.achv[a.id] = true; });
+
+            // Оффлайн: доход (50% ставки, максимум 4 часа), наука и время исследований
             let offlineTime = Math.min((Date.now() - game.lastSave) / 1000, 14400);
-            let offlineGain = game.dps * game.multiplier * offlineTime * 0.5;
-            if (offlineGain > 0) {
-                game.dust += offlineGain; 
-                game.totalDust += offlineGain;
-                game.floatTexts.push({ 
-                    x: W/2, y: H/2, 
-                    text: t.offlineEarnings + ": " + formatNum(offlineGain), 
-                    life: 3, vy: -1, color: "#00FF99" 
-                });
+            if (offlineTime > 60) {
+                let crysGain = game.cache.crysPerSec * offlineTime * 0.5;
+                let eggsGain = Math.min(game.cache.eggPerSec * offlineTime * 0.5, game.cache.cap - game.eggsStored);
+                if (eggsGain < 0) eggsGain = 0;
+                let sciGain = game.cache.sciPerSec * offlineTime * 0.5;
+                if (crysGain + eggsGain * game.cache.eggPrice > 0 || sciGain > 0) {
+                    game.crystals += crysGain; game.runCrystals += crysGain; game.totalCrystals += crysGain;
+                    game.eggsStored += eggsGain; game.eggsProduced += eggsGain;
+                    game.science += sciGain;
+                    game.floatTexts.push({
+                        x: W / 2, y: H / 2,
+                        text: (lang === 'ru' ? "Оффлайн доход: " : "Offline earnings: ") + formatNum(crysGain) + ' 💎' +
+                            (eggsGain > 0 ? ' +' + formatNum(eggsGain) + ' 🥚' : '') +
+                            (sciGain >= 1 ? ' +' + formatNum(sciGain) + ' 🧪' : ''),
+                        life: 3, vy: -1, color: "#00FF99"
+                    });
+                }
+                // Исследование продолжалось офлайн
+                if (game.tech.active) {
+                    game.tech.active.left -= offlineTime;
+                    if (game.tech.active.left <= 0) finishResearch();
+                }
             }
         } else {
-            generateNewQuests();
+            if (saveData) console.log("Old save version found, starting fresh empire.");
+            recalcStats();
+            genContract();
         }
 
         // Инициализация звёзд (один раз)
         if (game.stars.length === 0) {
-            for(let i=0; i<150; i++) {
+            for (let i = 0; i < 150; i++) {
                 game.stars.push({
                     x: Math.random() * W,
                     y: Math.random() * H,
@@ -1334,20 +2600,20 @@
                 });
             }
         }
-        
-        // ВАЖНО: setInterval больше НЕ здесь! 
-        // Он вынесен в initYandex() и создаётся только один раз.
+        recalcStats();
     }
 
     // ====================================================================================
-    // 8. ADVERTISEMENT — interstitial (каждые 3 мин) + rewarded + баннер
+    // 11. РЕКЛАМА — interstitial (каждые 3 мин) + rewarded + лотерея
     // ====================================================================================
     let lastInterstitial = Date.now();
     let bannerVisible = false;
+    let bannerRotateTimer = null;
 
     function bannerSafeOffset() {
-        // На мобильных поднимаем нижние кнопки панели над баннером
-        return (game.isMobile && bannerVisible) ? BANNER_CONFIG.height + 10 : 0;
+        // Нижние элементы игры поднимаются над полноширинным баннером
+        // (и на мобильных, и на десктопе)
+        return bannerVisible ? BANNER_CONFIG.height + 10 : 0;
     }
 
     // Полноэкранная реклама: внутри VK — VKWebAppShowNativeAds (interstitial),
@@ -1385,14 +2651,15 @@
 
     async function showRewarded(type) {
         let reward = () => {
-            if (type === 'boost') game.boostTime = 120;
+            if (type === 'boost') game.boosts.adBoost = 120;
             else if (type === 'offline') {
-                let gain = Math.max(1000, game.dps * game.multiplier * 7200);
-                game.dust += gain; game.totalDust += gain; game.cameraShake = 20;
-                game.floatTexts.push({ x: W/2, y: H/2, text: t.rewardOffline, life: 2, vy: -2, color: "#008CBA" });
-            } else if (type === 'roulette') { 
-                game.rouletteResult = null; 
-                startSpin(); 
+                let gain = Math.max(1000, game.cache.incomePerSec * 7200);
+                game.crystals += gain; game.runCrystals += gain; game.totalCrystals += gain;
+                game.cameraShake = 20;
+                addFloat(W / 2, H / 2, t.rewardOffline + ' +' + formatNum(gain) + ' 💎', "#008CBA");
+            } else if (type === 'roulette') {
+                game.rouletteResult = null;
+                startSpin();
             }
         };
 
@@ -1407,14 +2674,51 @@
             }
             game.state = 'playing';
             game.lastTick = Date.now();
-        } else { 
+        } else {
             // Реклама не подключена — выдаём награду напрямую (страховка от мёртвых кнопок)
-            reward(); 
+            reward();
+        }
+    }
+
+    function spinRoulette() {
+        if (game.rouletteSpinning) return;
+        game.spinsDone++;
+        let now = Date.now();
+        if (now - game.lastSpinReset > 86400000) {
+            game.lastSpinReset = now;
+            game.freeSpins = 1;
+        }
+        if (game.freeSpins > 0) { game.freeSpins--; startSpin(); }
+        else if (adsUI) { showRewarded('roulette'); }
+        else { startSpin(); } // Реклама не подключена: крутим бесплатно
+    }
+
+    function startSpin() {
+        game.rouletteSpinning = true;
+        game.rouletteResult = null;
+        game.rouletteStopTime = Date.now() + 3000 + Math.random() * 2000;
+        sfx.roulette();
+    }
+
+    function finishSpin() {
+        let winningAngle = (270 - game.rouletteAngle + 36000) % 360;
+        let segment = Math.floor(winningAngle / 45);
+        let prizes = ROULETTE_PRIZES();
+        let res = prizes[segment];
+        game.rouletteResult = res;
+        game.rouletteSpinning = false;
+
+        if (res === "x2") game.boosts.adBoost = Math.max(game.boosts.adBoost, 60);
+        else if (res === "JACKPOT") { game.boosts.adBoost = Math.max(game.boosts.adBoost, 300); game.cameraShake = 20; }
+        else if (res === "💎") {
+            let gain = Math.max(500, game.cache.incomePerSec * 1800);
+            game.crystals += gain; game.runCrystals += gain; game.totalCrystals += gain;
+            game.cameraShake = 20;
         }
     }
 
     // ====================================================================================
-    // 8a. BANNER AD — HTML-слот внизу игровой области
+    // 11a. BANNER AD — полноширинный HTML-слот внизу экрана
     // ====================================================================================
     function showBannerAd() {
         if (!BANNER_CONFIG.enabled) return;
@@ -1424,22 +2728,32 @@
         let content = false;
         if (BANNER_CONFIG.html && BANNER_CONFIG.html.trim()) {
             // Код рекламной сети (VK Рекламная сеть, Яндекс РСЯ и т.п.) —
-            // рендерим в изолированном iframe, чтобы скрипты сети исполнялись корректно
+            // рендерим в изолированном iframe на всю ширину экрана
             el.innerHTML = "";
             let f = document.createElement('iframe');
-            f.style.cssText = "border:0;width:320px;height:" + BANNER_CONFIG.height + "px;overflow:hidden;";
+            f.style.cssText = "border:0;width:100%;height:" + BANNER_CONFIG.height + "px;overflow:hidden;";
             f.setAttribute("sandbox", "allow-scripts allow-popups allow-popups-to-escape-sandbox allow-same-origin");
             f.srcdoc = BANNER_CONFIG.html;
             el.appendChild(f);
             content = true;
-        } else if (ADS_DEBUG && !inVK) {
-            // Демо-баннер для локальной проверки размещения
-            el.innerHTML = '<div style="width:320px;height:' + BANNER_CONFIG.height + 'px;border-radius:8px;' +
-                'background:linear-gradient(90deg,#12122a,#1c1436);border:1px solid rgba(157,78,221,0.55);' +
-                'display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.5;' +
-                'color:#8a8aa0;font-family:sans-serif;font-size:11px;">' +
-                '<span style="color:#c9b8ff;font-weight:bold;letter-spacing:1px;">РЕКЛАМА 320×50 (ДЕМО)</span>' +
-                '<span>код рекламной сети вставляется в BANNER_CONFIG.html</span></div>';
+        } else {
+            // «Домашний» баннер (пока код рекламной сети не подключён): ротация
+            // подсказок игры. После вставки кода сети заменяется реальной рекламой.
+            let tipIdx = 0;
+            let adLabel = (lang === 'ru') ? "РЕКЛАМА" : "AD";
+            let renderTip = () => {
+                let tips = t.bannerTips || ["Космическое Яйцо"];
+                el.innerHTML = '<div style="width:100%;height:' + BANNER_CONFIG.height + 'px;' +
+                    'background:linear-gradient(90deg,#12122a,#1c1436);' +
+                    'display:flex;align-items:center;justify-content:center;line-height:1.4;' +
+                    'color:#c9b8ff;font-family:sans-serif;font-size:12px;position:relative;text-align:center;' +
+                    'padding:0 44px;box-sizing:border-box;overflow:hidden;white-space:nowrap;">' +
+                    '<span style="position:absolute;left:8px;top:5px;font-size:8px;color:#6a6a80;letter-spacing:1px;">' + adLabel + '</span>' +
+                    '<span>✨ ' + tips[tipIdx % tips.length] + '</span></div>';
+            };
+            renderTip();
+            if (bannerRotateTimer) clearInterval(bannerRotateTimer);
+            bannerRotateTimer = setInterval(() => { tipIdx++; renderTip(); }, 6000);
             content = true;
         }
 
@@ -1454,13 +2768,14 @@
         if (!bannerVisible) return;
         let el = document.getElementById('bannerAd');
         if (!el) return;
-        let playW = game.isMobile ? W : (W - 340); // центрируем над игровой областью
-        el.style.left = (playW / 2) + "px";
-        el.style.bottom = "8px";
+        // Полная ширина низа экрана
+        el.style.left = "0px";
+        el.style.right = "0px";
+        el.style.bottom = "0px";
     }
 
     // ====================================================================================
-    // 9. GAME LOOP
+    // 12. GAME LOOP & INIT
     // ====================================================================================
     function gameLoop() {
         let now = Date.now();
@@ -1473,15 +2788,17 @@
         requestAnimationFrame(gameLoop);
     }
 
-    // ====================================================================================
-    // 10. INIT
-    // ====================================================================================
     function init() {
         resize();
         loadAssets();
         initPlatform();
     }
     init();
+
+    // Хук для автотестов (не влияет на геймплей)
+    window.__tycoon = { game: game, sellAll: sellAll, recalcStats: recalcStats, buyBusiness: buyBusiness,
+        research: research, buyReactor: buyReactor, unlockColony: unlockColony, finishResearch: finishResearch,
+        hireManager: hireManager, tapCore: tapCore };
     </script>
 </body>
 </html>
