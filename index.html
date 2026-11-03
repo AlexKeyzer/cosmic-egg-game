@@ -54,7 +54,7 @@
 
     <script>
     // ====================================================================================
-    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v3.4)
+    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v3.5)
     // Глубокий менеджмент-тайкун: 6 бизнесов с автоматическим производством,
     // склад яиц, биржа с колеблющимися ценами, заказы планет, улучшения,
     // НАУКА и дерево из 24 технологий с таймерами исследований,
@@ -115,20 +115,29 @@
     const STICKY_BANNER_H = 56;          // высота нативного sticky-баннера VK (резерв места)
     const ADS_DEBUG = true;
 
-    // Баннерная реклама (низ экрана, v3.4):
+    // Баннерная реклама (низ экрана, v3.5):
     // • Внутри VK показывается НАТИВНЫЙ sticky-баннер Рекламной сети VK
     //   (VKWebAppShowNativeAds, ad_format 'sticky') — официальный формат
     //   текстово-графического объявления внизу экрана мини-приложения.
-    // • Нет заполнения — повторные запросы (до 5 раз раз в 60 с и после фона).
-    // • Совсем без баннера низ экрана остаётся ЧИСТЫМ (v3.4: полка-заглушка
-    //   «СОВЕТ»/«TIP» убрана совсем).
-    // • Вне VK: код рекламной сети из BANNER_CONFIG.html — он рендерится
-    //   в изолированном iframe на всю ширину.
+    //   Нет заполнения — повторные запросы (до 5 раз раз в 60 с и после фона).
+    //   Сторонние рекламные сети внутри VK запрещены правилами монетизации VK.
+    // • Вне VK (свой сайт / GitHub Pages) — рекламная сеть на выбор:
+    //   Яндекс РСЯ (достаточно вписать ID блока), Google AdSense (client + slot)
+    //   или любой свой код (network: "custom").
+    // • Сеть не настроена — низ экрана остаётся ЧИСТЫМ (заглушек нет, v3.4).
+    // • Проверка вёрстки без сети: откройте игру с ?banner_demo=1 — покажется
+    //   ДЕМО-баннер (служебный режим, игрокам не показывается).
     const BANNER_CONFIG = {
-        enabled: true,   // баннер включён
-        html: "",        // код рекламной сети для веб-версии (пусто = баннера нет)
-        height: 50       // высота iframe рекламной сети в px
+        enabled: true,             // баннерная реклама включена
+        network: "auto",           // "auto" | "yandex" | "adsense" | "custom" | "none"
+        yandex:  { blockId: "" },  // Яндекс РСЯ: ID блока, напр. "R-A-1234567-1"
+        adsense: { client: "", slot: "" }, // AdSense: "ca-pub-…" и номер слота
+        html: "",                  // network "custom": свой код любой сети
+        height: 50,                // высота баннера в px (нижние элементы поднимутся)
+        stickyFallbackDom: false   // показывать сеть в VK после 5 неудач sticky
+                                   // (НЕ включайте: сторонние сети в VK запрещены)
     };
+    const BANNER_DEMO = /[?&]banner_demo=1/.test(location.search);
 
     let vk = null;       // vkBridge, если игра запущена внутри VK
     let inVK = false;    // флаг «запущено внутри ВКонтакте»
@@ -2826,28 +2835,129 @@
     }
 
     // ====================================================================================
-    // 11a. BANNER — нативный sticky-баннер VK внизу экрана (v3.4: без заглушек)
+    // 11a. BANNER — баннерная реклама внизу экрана (v3.5: VK sticky + сети для веба)
     // ====================================================================================
-    let bannerMode = null;   // 'native' — sticky Рекламной сети VK, 'dom' — iframe рекламной сети
+    let bannerMode = null;   // 'native' — sticky VK, 'dom' — рекламная сеть, 'demo' — демо-баннер
     let stickyTries = 0;     // сколько раз sticky-баннер не был получен
 
     function bannerSafeOffset() {
         // Нижние элементы игры поднимаются над баннером:
-        // native — резерв под sticky VK (56 px + отступ), dom — под iframe сети
+        // native — резерв под sticky VK (56 px + отступ), dom/demo — под контейнер сети
         if (bannerMode === 'native') return STICKY_BANNER_H + 10;
-        if (bannerMode === 'dom') return BANNER_CONFIG.height + 10;
+        if (bannerMode === 'dom' || bannerMode === 'demo') return BANNER_CONFIG.height + 10;
         return 0;
     }
 
-    // Снизу — НАСТОЯЩАЯ баннерная реклама: внутри VK запрашивается официальный
-    // sticky-баннер Рекламной сети VK (VKWebAppShowNativeAds, ad_format 'sticky' —
-    // текстово-графическое объявление внизу экрана мини-приложения). Если заполнения
-    // нет — до 5 повторных запросов раз в 60 с (и по возврату из фона).
-    // v3.4: никакой полки-заглушки «СОВЕТ» — без баннера низ экрана чистый.
+    // Какая рекламная сеть настроена для веб-версии: 'yandex' | 'adsense' | 'custom' | null
+    function bannerNetwork() {
+        if (!BANNER_CONFIG.enabled) return null;
+        const net = String(BANNER_CONFIG.network || 'auto').toLowerCase();
+        const yId = BANNER_CONFIG.yandex && String(BANNER_CONFIG.yandex.blockId || '').trim();
+        const aOk = !!(BANNER_CONFIG.adsense &&
+            String(BANNER_CONFIG.adsense.client || '').trim() &&
+            String(BANNER_CONFIG.adsense.slot || '').trim());
+        const cOk = !!(BANNER_CONFIG.html && BANNER_CONFIG.html.trim());
+        if (net === 'none') return null;
+        if (net === 'yandex') return yId ? 'yandex' : null;
+        if (net === 'adsense') return aOk ? 'adsense' : null;
+        if (net === 'custom') return cOk ? 'custom' : null;
+        if (yId) return 'yandex';   // auto: первая настроенная сеть
+        if (aOk) return 'adsense';
+        if (cOk) return 'custom';
+        return null;
+    }
+
+    // ДЕМО-баннер (?banner_demo=1): служебный режим проверки вёрстки без рекламной
+    // сети. В обычных ссылках параметра нет — игроки его никогда не видят.
+    function renderDemoBanner(el) {
+        bannerMode = 'demo';
+        bannerVisible = true;
+        el.innerHTML = "";
+        el.style.display = "block";
+        positionBannerAd();
+        let d = document.createElement('div');
+        d.style.cssText = "height:" + BANNER_CONFIG.height + "px;line-height:" + BANNER_CONFIG.height +
+            "px;font:600 12px Arial,sans-serif;color:#ffd67a;letter-spacing:.06em;" +
+            "text-align:center;white-space:nowrap;overflow:hidden;" +
+            "background:repeating-linear-gradient(45deg,#141428,#141428 14px,#1b1b36 14px,#1b1b36 28px);";
+        d.textContent = "РЕКЛАМА · ТЕСТОВЫЙ БАННЕР — демо проверки вёрстки (?banner_demo=1)";
+        el.appendChild(d);
+    }
+
+    // Рендер настроенной рекламной сети в контейнере #bannerAd (веб-версия)
+    function renderDomBanner(el, net) {
+        bannerMode = 'dom';
+        bannerVisible = true;
+        el.innerHTML = "";
+        el.style.display = "block";
+        positionBannerAd();
+        if (net === 'yandex') {
+            // Яндекс РСЯ: адаптивный RTB-блок по одному ID (context.js подхватит очередь)
+            let id = 'yandex_rtb_' + String(BANNER_CONFIG.yandex.blockId).replace(/[^A-Za-z0-9_-]/g, '');
+            let holder = document.createElement('div');
+            holder.id = id;
+            holder.style.cssText = "width:100%;height:" + BANNER_CONFIG.height + "px;overflow:hidden;";
+            el.appendChild(holder);
+            (window.yaContextCb = window.yaContextCb || []).push(function () {
+                try {
+                    Ya.Context.AdvManager.render({
+                        blockId: BANNER_CONFIG.yandex.blockId,
+                        renderTo: id,
+                        platform: (game.isMobile ? 'touch' : 'desktop')
+                    });
+                } catch (e) { console.log("Yandex banner error:", e); }
+            });
+            if (!document.getElementById('yandex-ads-script')) {
+                let s = document.createElement('script');
+                s.id = 'yandex-ads-script';
+                s.src = 'https://yandex.ru/ads/system/context.js';
+                s.async = true;
+                document.head.appendChild(s);
+            }
+        } else if (net === 'adsense') {
+            // Google AdSense: клиент + слот, адаптивный горизонтальный блок
+            let ins = document.createElement('ins');
+            ins.className = 'adsbygoogle';
+            ins.style.cssText = "display:block;width:100%;height:" + BANNER_CONFIG.height + "px;";
+            ins.setAttribute('data-ad-client', BANNER_CONFIG.adsense.client);
+            ins.setAttribute('data-ad-slot', BANNER_CONFIG.adsense.slot);
+            ins.setAttribute('data-ad-format', 'horizontal');
+            ins.setAttribute('data-full-width-responsive', 'true');
+            el.appendChild(ins);
+            if (!document.getElementById('adsense-script')) {
+                let s = document.createElement('script');
+                s.id = 'adsense-script';
+                s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' +
+                    encodeURIComponent(BANNER_CONFIG.adsense.client);
+                s.async = true;
+                s.crossOrigin = 'anonymous';
+                document.head.appendChild(s);
+            }
+            try { (window.adsbygoogle = window.adsbygoogle || []).push({}); }
+            catch (e) { console.log("AdSense banner error:", e); }
+        } else {
+            // custom: любой свой код рекламной сети — изолированный iframe на всю ширину
+            let f = document.createElement('iframe');
+            f.style.cssText = "border:0;width:100%;height:" + BANNER_CONFIG.height + "px;overflow:hidden;";
+            f.setAttribute("sandbox", "allow-scripts allow-popups allow-popups-to-escape-sandbox allow-same-origin");
+            f.srcdoc = BANNER_CONFIG.html;
+            el.appendChild(f);
+        }
+    }
+
+    // Снизу — баннерная реклама (v3.5):
+    // • внутри VK — официальный sticky-баннер Рекламной сети VK; нет заполнения —
+    //   до 5 повторных запросов раз в 60 с (и по возврату из фона);
+    // • вне VK — настроенная рекламная сеть (Яндекс РСЯ / AdSense / свой код);
+    // • ?banner_demo=1 — демо-баннер для проверки вёрстки (служебный режим);
+    // • ничего не настроено и заполнения нет — низ экрана чистый (заглушек нет).
     async function showBannerAd() {
         if (!BANNER_CONFIG.enabled) return;
         let el = document.getElementById('bannerAd');
         if (!el) return;
+
+        // Служебный демо-режим вёрстки — перекрывает остальные варианты
+        if (BANNER_DEMO) { renderDemoBanner(el); return; }
 
         if (vk && adsUI) {
             try {
@@ -2859,25 +2969,20 @@
                 return;
             } catch (e) {
                 console.log("Sticky banner no fill:", e);
-                if (stickyTries++ < 5) setTimeout(showBannerAd, 60000);
+                if (stickyTries++ < 5) {
+                    setTimeout(showBannerAd, 60000);
+                    if (!BANNER_CONFIG.stickyFallbackDom) return; // ждём повтор sticky
+                } else if (!BANNER_CONFIG.stickyFallbackDom) {
+                    return; // sticky не получен, fallback выключен — низ чистый
+                }
             }
         }
         if (bannerMode === 'native') return;
 
-        // Вне VK: код рекламной сети (если вставлен) — изолированный iframe на всю ширину.
-        if (BANNER_CONFIG.html && BANNER_CONFIG.html.trim()) {
-            bannerMode = 'dom';
-            bannerVisible = true;
-            el.innerHTML = "";
-            let f = document.createElement('iframe');
-            f.style.cssText = "border:0;width:100%;height:" + BANNER_CONFIG.height + "px;overflow:hidden;";
-            f.setAttribute("sandbox", "allow-scripts allow-popups allow-popups-to-escape-sandbox allow-same-origin");
-            f.srcdoc = BANNER_CONFIG.html;
-            el.appendChild(f);
-            el.style.display = "block";
-            positionBannerAd();
-        }
-        // Иначе — никакой заглушки: без баннера низ экрана остаётся чистым.
+        // Веб-версия (или fallback в VK при stickyFallbackDom): настроенная сеть
+        let net = bannerNetwork();
+        if (!net) return; // сеть не настроена — низ экрана остаётся чистым
+        if (bannerMode !== 'dom') renderDomBanner(el, net); // без повторного рендера
     }
 
     function positionBannerAd() {
@@ -2916,7 +3021,7 @@
         research: research, buyReactor: buyReactor, unlockColony: unlockColony, finishResearch: finishResearch,
         hireManager: hireManager, tapCore: tapCore,
         showInterstitial: showInterstitial, showRewarded: showRewarded, watchRewardedAd: watchRewardedAd,
-        showBannerAd: showBannerAd, bannerSafeOffset: bannerSafeOffset };
+        showBannerAd: showBannerAd, bannerSafeOffset: bannerSafeOffset, bannerNetwork: bannerNetwork };
     window.__adsCfg = { interval: INTERSTITIAL_INTERVAL, rewardSecs: REWARD_AD_SECS, stickyH: STICKY_BANNER_H };
     </script>
 </body>
