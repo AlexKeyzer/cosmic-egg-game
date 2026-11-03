@@ -54,14 +54,17 @@
 
     <script>
     // ====================================================================================
-    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v3.1)
+    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v3.4)
     // Глубокий менеджмент-тайкун: 6 бизнесов с автоматическим производством,
     // склад яиц, биржа с колеблющимися ценами, заказы планет, улучшения,
     // НАУКА и дерево из 24 технологий с таймерами исследований,
     // КОЛОНИИ на 3 планетах (Терра-9 / Криос / Пирит) с раздельными бизнесами,
     // ЭНЕРГОСИСТЕМА (реактор, потребление, эффективность производства),
     // цепочка из 36 целей империи, события (кометы/НЛО/дождь) и престиж.
-    // Рекламный стек VK сохранён: interstitial каждые 3 мин, rewarded-кнопки, баннер.
+    // Реклама v3.4: interstitial НЕ ЧАЩЕ 1 РАЗА В 3 МИНУТЫ (единый гейт частоты),
+    // нативный sticky-баннер VK снизу (без заполнения низ экрана остаётся пустым —
+    // полка-заглушка убрана), rewarded через модалку с 30-секундным таймером
+    // и наградой только за полный просмотр.
     // ====================================================================================
 
     const canvas = document.getElementById('gameCanvas');
@@ -93,28 +96,38 @@
     // ====================================================================================
     // 1. VK BRIDGE & МОНЕТИЗАЦИЯ (сохранено из кликер-версии)
     // ====================================================================================
-    // НАСТРОЙКА МОНЕТИЗАЦИИ:
-    // • Полноэкранная (interstitial) реклама — автоматически каждые 3 минуты игры,
-    //   а также после закрытия лотереи и сдачи заказа планете.
-    // • Rewarded-реклама — кнопки «x2 Доход», «2ч Офлайн», «Лотерея» (только внутри VK).
-    // • Баннерная реклама — HTML-слот на всю ширину низа экрана, BANNER_CONFIG ниже.
+    // НАСТРОЙКА МОНЕТИЗАЦИИ (v3.3):
+    // • Полноэкранная (interstitial) реклама — НЕ ЧАЩЕ 1 РАЗА В INTERSTITIAL_INTERVAL
+    //   СЕКУНД (180 с = 3 минуты). Единый гейт частоты стоит внутри showInterstitial(),
+    //   поэтому ни таймер цикла, ни сдача заказа, ни закрытие лотереи не могут
+    //   показать её чаще лимита.
+    // • Баннер — нативный sticky-баннер Рекламной сети VK внизу экрана (см. ниже).
+    // • Rewarded-реклама — перед показом открывается модалка с 30-секундным таймером:
+    //   игрок заранее видит награду и правило; награда начисляется ТОЛЬКО за полный
+    //   просмотр (result:true). Кнопки «x2 Доход», «2ч Офлайн», «Лотерея».
     // Внутри VK используется официальный API: VKWebAppShowNativeAds (нужна включённая
     // монетизация: dev.vk.com → приложение → Монетизация).
     // ADS_DEBUG = true — вне VK показываются ДЕМО-заглушки рекламы (для локальной
     // проверки). Перед публикацией вне VK (например, GitHub Pages) поставьте false.
     const ADS_ENABLED = true;
-    const INTERSTITIAL_INTERVAL = 180;   // секунд между полноэкранными рекламами
+    const INTERSTITIAL_INTERVAL = 180;   // секунд между полноэкранными рекламами (3 мин)
+    const REWARD_AD_SECS = 30;           // длительность rewarded-ролика (таймер модалки)
+    const STICKY_BANNER_H = 56;          // высота нативного sticky-баннера VK (резерв места)
     const ADS_DEBUG = true;
 
-    // Баннерная реклама (полная ширина, низ экрана):
-    // • Баннер ВСЕГДА виден (в VK и вне его).
-    // • Пока BANNER_CONFIG.html пуст — крутится «домашний» баннер с подсказками игры.
-    // • Вставьте код рекламной сети (VK Рекламная сеть / Яндекс РСЯ) — он отрендерится
-    //   в изолированном iframe на всю ширину вместо подсказок.
+    // Баннерная реклама (низ экрана, v3.4):
+    // • Внутри VK показывается НАТИВНЫЙ sticky-баннер Рекламной сети VK
+    //   (VKWebAppShowNativeAds, ad_format 'sticky') — официальный формат
+    //   текстово-графического объявления внизу экрана мини-приложения.
+    // • Нет заполнения — повторные запросы (до 5 раз раз в 60 с и после фона).
+    // • Совсем без баннера низ экрана остаётся ЧИСТЫМ (v3.4: полка-заглушка
+    //   «СОВЕТ»/«TIP» убрана совсем).
+    // • Вне VK: код рекламной сети из BANNER_CONFIG.html — он рендерится
+    //   в изолированном iframe на всю ширину.
     const BANNER_CONFIG = {
         enabled: true,   // баннер включён
-        html: "",        // код рекламной сети (пока пусто — подсказки игры)
-        height: 50       // высота баннера в px
+        html: "",        // код рекламной сети для веб-версии (пусто = баннера нет)
+        height: 50       // высота iframe рекламной сети в px
     };
 
     let vk = null;       // vkBridge, если игра запущена внутри VK
@@ -163,6 +176,14 @@
             lottery: "Лотерея", freeSpin: "Бесплатно", spinAd: "📺 Смотреть рекламу",
             spinAgain: "📺 Ещё раз", won: "Выигрыш:", close: "Закрыть",
             rewardOffline: "+2ч дохода!",
+            adRewardTitle: "Реклама за вознаграждение",
+            adRewardBoost: "Награда: доход x2 на 2 минуты",
+            adRewardOffline: "Награда: +2 часа дохода сразу",
+            adRewardRoulette: "Награда: бесплатное вращение рулетки",
+            adTimerHint: ["Ролик длится 30 секунд — досмотрите до конца,", "и награда начисляется автоматически.", "Закроете ролик раньше — награды не будет."],
+            adWatch: "Смотреть рекламу",
+            adLater: "Позже",
+            adEarlyClose: "Ролик закрыт раньше — награды не будет",
             statsTotal: "Всего кристаллов", statsRun: "Заработано за забег", statsEggs: "Произведено яиц",
             statsSold: "Продано яиц", statsContracts: "Выполнено заказов", statsEvents: "Событий поймано",
             statsMgrs: "Менеджеров в команде", statsTime: "Время в игре", statsPrestiges: "Больших взрывов",
@@ -175,7 +196,6 @@
             prestigeToast: "💥 Большой Взрыв! +",
             prodRush: "⚡ Ускорение производства x2",
             prodRushShort: "⚡ x2",
-            bannerTips: ["🤖 Робот-кассир продаёт яйца сам — ты управляешь империей!", "🐔 Бизнесы работают 24/7 — нанимай менеджеров!", "🧪 Изучай технологии: они открывают новые планеты!", "📦 Выполняй заказы планет за премиальную цену!", "⚡ Следи за энергией: строй Реактор для роста!", "☄ Лови кометы: ускорение производства x2!", "🪐 Открывай колонии: Криос и Пирит ждут!", "💥 Большой Взрыв: +10% производства за осколок!"],
             langBtn: "EN"
         },
         en: {
@@ -217,6 +237,14 @@
             lottery: "Lottery", freeSpin: "Free", spinAd: "📺 Watch Ad",
             spinAgain: "📺 Again", won: "You won:", close: "Close",
             rewardOffline: "+2h income!",
+            adRewardTitle: "Rewarded ad",
+            adRewardBoost: "Reward: income x2 for 2 minutes",
+            adRewardOffline: "Reward: +2 hours of income",
+            adRewardRoulette: "Reward: a free roulette spin",
+            adTimerHint: ["The video lasts 30 seconds — watch it to the end,", "and the reward is granted automatically.", "Close it early — no reward."],
+            adWatch: "Watch ad",
+            adLater: "Later",
+            adEarlyClose: "Video closed early — no reward",
             statsTotal: "Total crystals", statsRun: "Earned this run", statsEggs: "Eggs produced",
             statsSold: "Eggs sold", statsContracts: "Orders completed", statsEvents: "Events caught",
             statsMgrs: "Managers on the team", statsTime: "Play time", statsPrestiges: "Big Bangs",
@@ -229,7 +257,6 @@
             prestigeToast: "💥 Big Bang! +",
             prodRush: "⚡ Production rush x2",
             prodRushShort: "⚡ x2",
-            bannerTips: ["🤖 The Cashier Bot sells eggs for you — you run the empire!", "🐔 Businesses produce 24/7 — hire managers!", "🧪 Research technologies to unlock new planets!", "📦 Deliver planet orders for premium prices!", "⚡ Mind your energy: upgrade the Reactor!", "☄ Catch comets: production x2 boost!", "🪐 Unlock colonies: Cryos and Pyrite await!", "💥 Big Bang: +10% production per shard!"],
             langBtn: "RU"
         }
     };
@@ -273,10 +300,20 @@
         try {
             setLanguage(detectLanguage());
             if (window.vkBridge && detectIsVK()) {
-                await window.vkBridge.send('VKWebAppInit');
-                vk = window.vkBridge;
-                inVK = true;
-                console.log("VK Bridge initialized.");
+                // Подстраховка 3 с (v3.3): если мост молчит (например, прямая ссылка
+                // с vk_*-параметрами открыта вне VK) — не зависаем навсегда на экране
+                // загрузки, а уходим в standalone-режим (vk=null, localStorage).
+                let alive = await Promise.race([
+                    window.vkBridge.send('VKWebAppInit').then(() => true),
+                    new Promise(res => setTimeout(() => res(false), 3000))
+                ]);
+                if (alive) {
+                    vk = window.vkBridge;
+                    inVK = true;
+                    console.log("VK Bridge initialized.");
+                } else {
+                    console.log("VK Bridge не ответил на VKWebAppInit — standalone mode.");
+                }
             } else {
                 console.log("VK Bridge недоступен. Standalone mode (веб / GitHub Pages).");
             }
@@ -320,6 +357,7 @@
                 game.state = 'playing';
                 game.lastTick = Date.now();
                 lastInterstitial = Date.now(); // после возврата в игру — 3 минуты до следующей рекламы
+                if (bannerMode !== 'native' && stickyTries < 5) showBannerAd(); // ещё попытка sticky (v3.3)
             }
         }
     });
@@ -2302,6 +2340,54 @@
             ctx.fillStyle = "#FFF"; ctx.font = "bold 15px sans-serif";
             ctx.fillText(t.prestigeCancel, mX + mW / 2 + gap / 2 + btnW / 2, startY + 30);
             uiButton('prestige_cancel', mX + mW / 2 + gap / 2, startY, btnW, btnH);
+        } else if (game.modal === 'ad_reward') {
+            // Модалка rewarded-рекламы (v3.3): кольцевой таймер 30 → 0 вместо крестика
+            let mH = Math.max(400, Math.min(H * 0.62, 430)), mY = H / 2 - mH / 2;
+            glassPanel(mX, mY, mW, mH, 20, 0.12);
+
+            ctx.fillStyle = "#FFD700"; ctx.textAlign = "center"; ctx.font = "bold 21px sans-serif";
+            ctx.fillText("📺 " + t.adRewardTitle, W / 2, mY + 44);
+
+            let rewardLine = game.adRewardType === 'boost' ? t.adRewardBoost :
+                (game.adRewardType === 'offline' ? t.adRewardOffline : t.adRewardRoulette);
+            ctx.fillStyle = "#00FF99"; ctx.font = "bold 15px sans-serif";
+            ctx.fillText(rewardLine, W / 2, mY + 76);
+
+            let left = Math.max(0, REWARD_AD_SECS - (Date.now() - game.adRewardOpenAt) / 1000);
+            let cX = W / 2, cY = mY + 152, r = 44, frac = left / REWARD_AD_SECS;
+            ctx.lineWidth = 7;
+            ctx.strokeStyle = "rgba(255,255,255,0.12)";
+            ctx.beginPath(); ctx.arc(cX, cY, r, 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = left > 0 ? "#9d4edd" : "#00FF99";
+            ctx.beginPath(); ctx.arc(cX, cY, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - frac)); ctx.stroke();
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 26px sans-serif";
+            ctx.fillText(Math.ceil(left), cX, cY + 9);
+
+            ctx.fillStyle = "#cfe9ff"; ctx.font = "12px sans-serif";
+            t.adTimerHint.forEach((line, i) => ctx.fillText(line, W / 2, mY + 232 + i * 19));
+
+            let btnH = 46, startY = mY + mH - 66;
+            let watchW = mW * 0.52, laterW = mW * 0.3, gap = 16;
+            let rowW = watchW + gap + laterW;
+            let watchX = mX + (mW - rowW) / 2, laterX = watchX + watchW + gap;
+            if (left > 0) {
+                ctx.fillStyle = "#3a3a4a";
+            } else {
+                let grad = ctx.createLinearGradient(watchX, startY, watchX + watchW, startY + btnH);
+                grad.addColorStop(0, "#f59e0b"); grad.addColorStop(1, "#d97706");
+                ctx.fillStyle = grad;
+            }
+            rect(watchX, startY, watchW, btnH, 12, true, false);
+            ctx.fillStyle = left > 0 ? "#9a9ab0" : "#231a00";
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText(t.adWatch + (left > 0 ? " · " + Math.ceil(left) + t.secShort : ""), watchX + watchW / 2, startY + 29);
+            uiButton('ad_watch', watchX, startY, watchW, btnH);
+
+            ctx.fillStyle = "#444";
+            rect(laterX, startY, laterW, btnH, 12, true, false);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 15px sans-serif";
+            ctx.fillText(t.adLater, laterX + laterW / 2, startY + 30);
+            uiButton('ad_cancel', laterX, startY, laterW, btnH);
         }
     }
 
@@ -2326,7 +2412,7 @@
     // ====================================================================================
     // 9. ВВОД
     // ====================================================================================
-    const MODAL_IDS = ['close_modal', 'spin_again', 'spin_roulette', 'prestige_confirm', 'prestige_cancel'];
+    const MODAL_IDS = ['close_modal', 'spin_again', 'spin_roulette', 'prestige_confirm', 'prestige_cancel', 'ad_watch', 'ad_cancel'];
 
     function handleInput(e) {
         e.preventDefault(); initAudio();
@@ -2428,6 +2514,8 @@
         if (id === 'spin_again') { showRewarded('roulette'); return; }
         if (id === 'ad_boost') { showRewarded('boost'); return; }
         if (id === 'ad_offline') { showRewarded('offline'); return; }
+        if (id === 'ad_watch') { watchRewardedAd(); return; }
+        if (id === 'ad_cancel') { game.modal = null; return; }
         if (id === 'ad_roulette') { game.modal = 'roulette'; return; }
         if (id === 'event_comet') { hitComet(); return; }
         if (id === 'event_ufo') { hitUfo(); return; }
@@ -2608,17 +2696,16 @@
     // ====================================================================================
     let lastInterstitial = Date.now();
     let bannerVisible = false;
-    let bannerRotateTimer = null;
-
-    function bannerSafeOffset() {
-        // Нижние элементы игры поднимаются над полноширинным баннером
-        // (и на мобильных, и на десктопе)
-        return bannerVisible ? BANNER_CONFIG.height + 10 : 0;
-    }
 
     // Полноэкранная реклама: внутри VK — VKWebAppShowNativeAds (interstitial),
     // вне VK при ADS_DEBUG — демо-заглушка (для локальной проверки).
+    // v3.3: ЕДИНЫЙ ГЕЙТ ЧАСТОТЫ — не чаще 1 раза в INTERSTITIAL_INTERVAL секунд
+    // (180 с = 3 минуты). Гейт стоит здесь, поэтому триггеры «таймер цикла»,
+    // «сдача заказа» и «закрытие лотереи» физически не могут показать рекламу
+    // чаще лимита. lastInterstitial сдвигается только фактическим показом —
+    // заблокированный вызов не переносит окно следующей рекламы.
     async function showInterstitial() {
+        if (Date.now() - lastInterstitial < INTERSTITIAL_INTERVAL * 1000) return;
         lastInterstitial = Date.now();
         if (vk && adsUI) {
             try {
@@ -2649,35 +2736,56 @@
         });
     }
 
-    async function showRewarded(type) {
-        let reward = () => {
-            if (type === 'boost') game.boosts.adBoost = 120;
-            else if (type === 'offline') {
-                let gain = Math.max(1000, game.cache.incomePerSec * 7200);
-                game.crystals += gain; game.runCrystals += gain; game.totalCrystals += gain;
-                game.cameraShake = 20;
-                addFloat(W / 2, H / 2, t.rewardOffline + ' +' + formatNum(gain) + ' 💎', "#008CBA");
-            } else if (type === 'roulette') {
-                game.rouletteResult = null;
-                startSpin();
-            }
-        };
+    // Rewarded-реклама (v3.3): перед показом — модалка 'ad_reward' с кольцевым
+    // таймером 30→0 вместо крестика: игрок заранее видит длительность ролика,
+    // награду и правило. Показ стартует только по кнопке «Смотреть рекламу»,
+    // а награда начисляется ТОЛЬКО при result:true (ролик досмотрен до конца);
+    // раннее закрытие или ошибка — без награды, с объяснением правила.
+    function showRewarded(type) {
+        game.adRewardType = type;
+        game.adRewardOpenAt = Date.now();
+        game.modal = 'ad_reward';
+    }
 
+    function grantReward(type) {
+        if (type === 'boost') game.boosts.adBoost = 120;
+        else if (type === 'offline') {
+            let gain = Math.max(1000, game.cache.incomePerSec * 7200);
+            game.crystals += gain; game.runCrystals += gain; game.totalCrystals += gain;
+            game.cameraShake = 20;
+            addFloat(W / 2, H / 2, t.rewardOffline + ' +' + formatNum(gain) + ' 💎', "#008CBA");
+        } else if (type === 'roulette') {
+            game.rouletteResult = null;
+            game.modal = 'roulette'; // возврат к колесу после ролика
+            startSpin();
+        }
+    }
+
+    async function watchRewardedAd() {
+        if (Date.now() - game.adRewardOpenAt < REWARD_AD_SECS * 1000) return; // таймер не истёк
+        game.modal = null;
+        let type = game.adRewardType;
+        let rewarded = false;
+        game.state = 'paused';
         if (vk && adsUI) {
             try {
-                game.state = 'paused';
-                // Корректный формат по докам VK Bridge: ad_format: 'reward'
-                await vk.send('VKWebAppShowNativeAds', { ad_format: 'reward' });
-                reward();
+                // Награда только за полный просмотр: VK Bridge возвращает result:true,
+                // если ролик досмотрен; крестик плеера / ранний выход → false или ошибка.
+                let res = await vk.send('VKWebAppShowNativeAds', { ad_format: 'reward' });
+                rewarded = (res === true) || !!(res && res.result === true);
             } catch (e) {
                 console.log("Rewarded error:", e);
             }
-            game.state = 'playing';
-            game.lastTick = Date.now();
+        } else if (ADS_DEBUG && !inVK) {
+            await showDemoOverlay("РЕКЛАМА · " + REWARD_AD_SECS + " СЕК", 2.2);
+            rewarded = true; // демо-просмотр считается полным
         } else {
-            // Реклама не подключена — выдаём награду напрямую (страховка от мёртвых кнопок)
-            reward();
+            rewarded = true; // страховка от мёртвых кнопок: реклама вне VK не подключена
         }
+        game.state = 'playing';
+        game.lastTick = Date.now();
+        if (rewarded) grantReward(type);
+        else pushToast('📺 ' + t.adEarlyClose);
     }
 
     function spinRoulette() {
@@ -2718,57 +2826,65 @@
     }
 
     // ====================================================================================
-    // 11a. BANNER AD — полноширинный HTML-слот внизу экрана
+    // 11a. BANNER — нативный sticky-баннер VK внизу экрана (v3.4: без заглушек)
     // ====================================================================================
-    function showBannerAd() {
+    let bannerMode = null;   // 'native' — sticky Рекламной сети VK, 'dom' — iframe рекламной сети
+    let stickyTries = 0;     // сколько раз sticky-баннер не был получен
+
+    function bannerSafeOffset() {
+        // Нижние элементы игры поднимаются над баннером:
+        // native — резерв под sticky VK (56 px + отступ), dom — под iframe сети
+        if (bannerMode === 'native') return STICKY_BANNER_H + 10;
+        if (bannerMode === 'dom') return BANNER_CONFIG.height + 10;
+        return 0;
+    }
+
+    // Снизу — НАСТОЯЩАЯ баннерная реклама: внутри VK запрашивается официальный
+    // sticky-баннер Рекламной сети VK (VKWebAppShowNativeAds, ad_format 'sticky' —
+    // текстово-графическое объявление внизу экрана мини-приложения). Если заполнения
+    // нет — до 5 повторных запросов раз в 60 с (и по возврату из фона).
+    // v3.4: никакой полки-заглушки «СОВЕТ» — без баннера низ экрана чистый.
+    async function showBannerAd() {
         if (!BANNER_CONFIG.enabled) return;
         let el = document.getElementById('bannerAd');
         if (!el) return;
 
-        let content = false;
+        if (vk && adsUI) {
+            try {
+                await vk.send('VKWebAppShowNativeAds', { ad_format: 'sticky' });
+                bannerMode = 'native';
+                bannerVisible = true;
+                el.style.display = 'none'; // рисует сам VK — DOM не нужен
+                positionBannerAd();
+                return;
+            } catch (e) {
+                console.log("Sticky banner no fill:", e);
+                if (stickyTries++ < 5) setTimeout(showBannerAd, 60000);
+            }
+        }
+        if (bannerMode === 'native') return;
+
+        // Вне VK: код рекламной сети (если вставлен) — изолированный iframe на всю ширину.
         if (BANNER_CONFIG.html && BANNER_CONFIG.html.trim()) {
-            // Код рекламной сети (VK Рекламная сеть, Яндекс РСЯ и т.п.) —
-            // рендерим в изолированном iframe на всю ширину экрана
+            bannerMode = 'dom';
+            bannerVisible = true;
             el.innerHTML = "";
             let f = document.createElement('iframe');
             f.style.cssText = "border:0;width:100%;height:" + BANNER_CONFIG.height + "px;overflow:hidden;";
             f.setAttribute("sandbox", "allow-scripts allow-popups allow-popups-to-escape-sandbox allow-same-origin");
             f.srcdoc = BANNER_CONFIG.html;
             el.appendChild(f);
-            content = true;
-        } else {
-            // «Домашний» баннер (пока код рекламной сети не подключён): ротация
-            // подсказок игры. После вставки кода сети заменяется реальной рекламой.
-            let tipIdx = 0;
-            let adLabel = (lang === 'ru') ? "РЕКЛАМА" : "AD";
-            let renderTip = () => {
-                let tips = t.bannerTips || ["Космическое Яйцо"];
-                el.innerHTML = '<div style="width:100%;height:' + BANNER_CONFIG.height + 'px;' +
-                    'background:linear-gradient(90deg,#12122a,#1c1436);' +
-                    'display:flex;align-items:center;justify-content:center;line-height:1.4;' +
-                    'color:#c9b8ff;font-family:sans-serif;font-size:12px;position:relative;text-align:center;' +
-                    'padding:0 44px;box-sizing:border-box;overflow:hidden;white-space:nowrap;">' +
-                    '<span style="position:absolute;left:8px;top:5px;font-size:8px;color:#6a6a80;letter-spacing:1px;">' + adLabel + '</span>' +
-                    '<span>✨ ' + tips[tipIdx % tips.length] + '</span></div>';
-            };
-            renderTip();
-            if (bannerRotateTimer) clearInterval(bannerRotateTimer);
-            bannerRotateTimer = setInterval(() => { tipIdx++; renderTip(); }, 6000);
-            content = true;
-        }
-
-        if (content) {
-            bannerVisible = true;
             el.style.display = "block";
             positionBannerAd();
         }
+        // Иначе — никакой заглушки: без баннера низ экрана остаётся чистым.
     }
 
     function positionBannerAd() {
         if (!bannerVisible) return;
         let el = document.getElementById('bannerAd');
         if (!el) return;
-        // Полная ширина низа экрана
+        // Полная ширина низа экрана (для native-баннера место резервирует safe-offset)
         el.style.left = "0px";
         el.style.right = "0px";
         el.style.bottom = "0px";
@@ -2798,7 +2914,10 @@
     // Хук для автотестов (не влияет на геймплей)
     window.__tycoon = { game: game, sellAll: sellAll, recalcStats: recalcStats, buyBusiness: buyBusiness,
         research: research, buyReactor: buyReactor, unlockColony: unlockColony, finishResearch: finishResearch,
-        hireManager: hireManager, tapCore: tapCore };
+        hireManager: hireManager, tapCore: tapCore,
+        showInterstitial: showInterstitial, showRewarded: showRewarded, watchRewardedAd: watchRewardedAd,
+        showBannerAd: showBannerAd, bannerSafeOffset: bannerSafeOffset };
+    window.__adsCfg = { interval: INTERSTITIAL_INTERVAL, rewardSecs: REWARD_AD_SECS, stickyH: STICKY_BANNER_H };
     </script>
 </body>
 </html>
