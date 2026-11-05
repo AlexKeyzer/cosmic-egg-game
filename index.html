@@ -54,7 +54,7 @@
 
     <script>
     // ====================================================================================
-    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v4.1)
+    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v4.2)
     // Глубокий менеджмент-тайкун: 6 бизнесов с автоматическим производством,
     // склад яиц, биржа с колеблющимися ценами, заказы планет, улучшения,
     // НАУКА и дерево из 24 технологий с таймерами исследований,
@@ -71,8 +71,14 @@
     // рекламная сеть из BANNER_CONFIG, без сети — тоже пусто. На вкладке
     // «Статус» — блок «Реклама»: мост VK, платформа запуска и ответ VK на запрос
     // sticky. Реклама v4.1: перед показом роликов — предзагрузка материалов
-    // (VKWebAppCheckNativeAds) и честные тосты, если VK отказал. Версия игры —
-    // на вкладке «Статус» и в консоли.
+    // (VKWebAppCheckNativeAds) и честные тосты, если VK отказал. Реклама v4.2:
+    // модалка rewarded НЕ открывается, если VK уже отказал в материалах (никакого
+    // пустого места и 30 секунд ожидания впустую) — вместо неё при 1208
+    // «monetization disabled» открывается модалка с точной причиной и шагами
+    // включения монетизации; разовый тост при первом отказе 1208; в «Статусе»
+    // рядом с версией — дата сборки (чтобы сразу видеть, что на хостинге не
+    // осталась старая версия v3.7/v3.8 с меткой тестового баннера — в v4.2
+    // таких надписей нет вообще). Версия игры — на вкладке «Статус» и в консоли.
     // ====================================================================================
 
     const canvas = document.getElementById('gameCanvas');
@@ -125,7 +131,14 @@
     // идёт при старте и раз в 90 с; при отказе VK (например, 1208 «monetization
     // disabled» — монетизация не включена в панели) игрок получает честный тост,
     // а вкладка «Статус» показывает строку Rewarded и подсказку про монетизацию.
-    const GAME_VERSION = 'v4.1';
+    // Реклама v4.2: перед открытием модалки rewarded — свежая проверка материалов;
+    // при отказе VK модалка с таймером НЕ открывается (нечего показывать — никак
+    // не имитируем показ), при 1208 открывается модалка с причиной и шагами
+    // включения монетизации. BUILD_DATE выводится в «Статусе»: сверяйте, что
+    // на хостинге именно эта сборка (старые v3.7/v3.8 рисовали метку
+    // тестового баннера — в v4.2 её нет).
+    const GAME_VERSION = 'v4.2';
+    const BUILD_DATE = '05.11.2026';
     const ADS_ENABLED = true;
     const INTERSTITIAL_INTERVAL = 180;   // секунд между полноэкранными рекламами (3 мин)
     const REWARD_AD_SECS = 30;           // длительность rewarded-ролика (таймер модалки)
@@ -214,6 +227,10 @@
             adEarlyClose: "Ролик закрыт раньше — награды не будет",
             adLoading: "Реклама ещё загружается — попробуйте через минуту",
             adUnavailable: "Реклама сейчас недоступна — попробуйте позже",
+            adBlockedToast: "Реклама недоступна: включите монетизацию в dev.vk.com",
+            adBlockedTitle: "Реклама недоступна",
+            adBlockedOk: "Понятно",
+            adBlockedSteps: ["1. Откройте dev.vk.com → приложение", "2. Настройки → Монетизация → включить", "3. Кабинет выплат: cashout.vk.com", "До модерации — тестовая реклама VK"],
             statsTotal: "Всего кристаллов", statsRun: "Заработано за забег", statsEggs: "Произведено яиц",
             statsSold: "Продано яиц", statsContracts: "Выполнено заказов", statsEvents: "Событий поймано",
             statsMgrs: "Менеджеров в команде", statsTime: "Время в игре", statsPrestiges: "Больших взрывов",
@@ -278,6 +295,10 @@
             adEarlyClose: "Video closed early — no reward",
             adLoading: "The ad is still loading — try again in a minute",
             adUnavailable: "Ads are unavailable right now — try again later",
+            adBlockedToast: "Ads unavailable: enable monetization at dev.vk.com",
+            adBlockedTitle: "Ads unavailable",
+            adBlockedOk: "Got it",
+            adBlockedSteps: ["1. Open dev.vk.com → your app", "2. Settings → Monetization → enable", "3. Payouts account: cashout.vk.com", "Test ads until the app is moderated"],
             statsTotal: "Total crystals", statsRun: "Earned this run", statsEggs: "Eggs produced",
             statsSold: "Eggs sold", statsContracts: "Orders completed", statsEvents: "Events caught",
             statsMgrs: "Managers on the team", statsTime: "Play time", statsPrestiges: "Big Bangs",
@@ -2202,7 +2223,9 @@
 
     function drawStatTab(px, py, pw, ph) {
         let lines = [
-            '🌌 ' + t.gameVersion + ': ' + GAME_VERSION,
+            '🌌 ' + t.gameVersion + ': ' + GAME_VERSION +
+            (typeof BUILD_DATE !== 'undefined'
+                ? (lang === 'ru' ? ' · сборка ' : ' · build ') + BUILD_DATE : ''),
             t.statsTotal + ": " + formatNum(game.totalCrystals) + ' 💎',
             t.statsRun + ": " + formatNum(game.runCrystals) + ' 💎',
             t.statsEggs + ": " + formatNum(Math.floor(game.eggsProduced)) + ' 🥚',
@@ -2467,6 +2490,31 @@
             ctx.fillStyle = "#FFF"; ctx.font = "bold 15px sans-serif";
             ctx.fillText(t.adLater, laterX + laterW / 2, startY + 30);
             uiButton('ad_cancel', laterX, startY, laterW, btnH);
+        } else if (game.modal === 'ad_blocked') {
+            // v4.2: честная модалка вместо пустого места — VK не дал рекламу,
+            // игрок сразу видит причину и что сделать, чтобы реклама появилась
+            let mH = Math.min(400, Math.max(330, H * 0.44)), mY = H / 2 - mH / 2;
+            glassPanel(mX, mY, mW, mH, 20, 0.12);
+
+            ctx.fillStyle = "#FF6B6B"; ctx.textAlign = "center"; ctx.font = "bold 20px sans-serif";
+            ctx.fillText("📺 " + t.adBlockedTitle, W / 2, mY + 42);
+
+            let r = String(adPreload.lastReason || bannerDiag.lastReason || '');
+            if (r.length > 34) r = r.slice(0, 34) + '…';
+            ctx.fillStyle = "#ffb4b4"; ctx.font = "13px sans-serif";
+            ctx.fillText((lang === 'ru' ? 'VK: отказ ' : 'VK: refused ') +
+                '[' + (adPreload.lastCode || bannerDiag.lastCode || '—') + '] ' + r, W / 2, mY + 72);
+
+            ctx.fillStyle = "#cfe9ff"; ctx.font = "13px sans-serif";
+            t.adBlockedSteps.forEach((line, i) => ctx.fillText(line, W / 2, mY + 116 + i * 27));
+
+            let bH = 46, bY = mY + mH - 62, bW = mW * 0.5, bX = mX + (mW - bW) / 2;
+            let grad = ctx.createLinearGradient(bX, bY, bX + bW, bY + bH);
+            grad.addColorStop(0, "#9d4edd"); grad.addColorStop(1, "#7b2cbf");
+            ctx.fillStyle = grad; rect(bX, bY, bW, bH, 12, true, false);
+            ctx.fillStyle = "#FFF"; ctx.font = "bold 15px sans-serif";
+            ctx.fillText(t.adBlockedOk, bX + bW / 2, bY + 29);
+            uiButton('ad_blocked_ok', bX, bY, bW, bH);
         }
     }
 
@@ -2491,7 +2539,7 @@
     // ====================================================================================
     // 9. ВВОД
     // ====================================================================================
-    const MODAL_IDS = ['close_modal', 'spin_again', 'spin_roulette', 'prestige_confirm', 'prestige_cancel', 'ad_watch', 'ad_cancel'];
+    const MODAL_IDS = ['close_modal', 'spin_again', 'spin_roulette', 'prestige_confirm', 'prestige_cancel', 'ad_watch', 'ad_cancel', 'ad_blocked_ok'];
 
     function handleInput(e) {
         e.preventDefault(); initAudio();
@@ -2595,6 +2643,7 @@
         if (id === 'ad_offline') { showRewarded('offline'); return; }
         if (id === 'ad_watch') { watchRewardedAd(); return; }
         if (id === 'ad_cancel') { game.modal = null; return; }
+        if (id === 'ad_blocked_ok') { game.modal = null; return; } // v4.2: закрыть «Реклама недоступна»
         if (id === 'ad_roulette') { game.modal = 'roulette'; return; }
         if (id === 'event_comet') { hitComet(); return; }
         if (id === 'event_ufo') { hitUfo(); return; }
@@ -2830,7 +2879,40 @@
     // награду и правило. Показ стартует только по кнопке «Смотреть рекламу»,
     // а награда начисляется ТОЛЬКО при result:true (ролик досмотрен до конца);
     // раннее закрытие или ошибка — без награды, с объяснением правила.
-    function showRewarded(type) {
+    // v4.2: перед открытием модалки rewarded — свежая проверка материалов VK.
+    // Если VK отказал (1208 «monetization disabled» или загрузка не готова),
+    // модалка с 30-секундным таймером НЕ открывается вовсе: никакого пустого
+    // места и ожидания впустую. При 1208 — модалка 'ad_blocked' с точной
+    // причиной и шагами включения монетизации, при остальных отказах — тост.
+    let monetToastShown = false; // разовый тост про монетизацию за сессию
+
+    function adMonetFailed() {
+        // отказ «монетизация не включена» — код 1208 в ответе VK (sticky или reward)
+        return /1208|monetization/i.test(adPreload.lastCode + ' ' + adPreload.lastReason +
+            ' ' + bannerDiag.lastCode + ' ' + bannerDiag.lastReason);
+    }
+
+    function notifyMonetOnce() {
+        if (!monetToastShown) {
+            monetToastShown = true;
+            pushToast('📺 ' + t.adBlockedToast);
+        }
+    }
+
+    async function showRewarded(type) {
+        if (vk && adsUI) {
+            if (adPreload.reward !== true) await vkCheckAds('reward');
+            if (adPreload.reward === false) {
+                // VK не дал материалы — имитировать показ нечего, модалку не открываем
+                if (adMonetFailed()) {
+                    notifyMonetOnce();
+                    game.modal = 'ad_blocked'; // причина + шаги включения монетизации
+                } else {
+                    pushToast('📺 ' + t.adLoading);
+                }
+                return;
+            }
+        }
         game.adRewardType = type;
         game.adRewardOpenAt = Date.now();
         game.modal = 'ad_reward';
@@ -2866,8 +2948,12 @@
                     // VK не дал материалы: монетизация не включена (1208) или загрузка не готова
                     rewarded = false;
                     toastShown = true;
-                    pushToast('📺 ' + (/1208|monetization/i.test(adPreload.lastCode + ' ' + adPreload.lastReason)
-                        ? t.adUnavailable : t.adLoading));
+                    if (adMonetFailed()) {
+                        notifyMonetOnce();
+                        game.modal = 'ad_blocked'; // v4.2: причина + шаги вместо пустого тоста
+                    } else {
+                        pushToast('📺 ' + t.adLoading);
+                    }
                 } else {
                     // Награда только за полный просмотр: VK Bridge возвращает result:true,
                     // если ролик досмотрен; крестик плеера / ранний выход → false или ошибка.
@@ -2882,7 +2968,12 @@
                 console.log("Rewarded error: [" + er.code + "] " + er.reason);
                 rewarded = false;
                 toastShown = true;
-                pushToast('📺 ' + t.adUnavailable);
+                if (adMonetFailed()) {
+                    notifyMonetOnce();
+                    game.modal = 'ad_blocked'; // v4.2: Show отклонён из-за монетизации
+                } else {
+                    pushToast('📺 ' + t.adUnavailable);
+                }
             }
         } else if (ADS_DEBUG && !inVK) {
             await showDemoOverlay("РЕКЛАМА · " + REWARD_AD_SECS + " СЕК", 2.2);
@@ -2976,6 +3067,7 @@
             adPreload.lastReason = er.reason;
             adPreload.lastAt = adNowTime();
             console.log("[Ads] VK: отказ проверки " + format + " [" + er.code + "] " + er.reason);
+            if (adMonetFailed()) notifyMonetOnce(); // v4.2: разовый тост при 1208
         }
     }
 
@@ -3120,6 +3212,7 @@
                     (e && e.message) || 'нет ответа VK';
                 console.log("[Banner] VK sticky не выдан (нет заполнения или монетизация не включена в панели dev.vk.com):",
                     bannerDiag.lastCode !== '' ? "[" + bannerDiag.lastCode + "] " : "", bannerDiag.lastReason, e);
+                if (adMonetFailed()) notifyMonetOnce(); // v4.2: разовый тост при 1208
                 if (stickyTries++ < STICKY_MAX_TRIES) {
                     console.log("[Banner] повторный запрос sticky через 60 с (" + stickyTries + "/" + STICKY_MAX_TRIES + ")");
                     setTimeout(showBannerAd, 60000);
@@ -3202,6 +3295,13 @@
                 out.push('   → ' + (lang === 'ru'
                     ? 'включите монетизацию: dev.vk.com → приложение → Настройки → Монетизация'
                     : 'enable monetization: dev.vk.com → app → Settings → Monetization'));
+            }
+            // v4.2: sticky-баннер VK проверяйте в мобильном приложении —
+            // на desktop-платформе заполнения может не быть вовсе
+            if (bannerMode !== 'native' && /^desktop/i.test(bd.plat)) {
+                out.push('   → ' + (lang === 'ru'
+                    ? 'sticky-баннер проверяйте в мобильном приложении VK (на desktop заполнения может не быть)'
+                    : 'check the sticky banner in the VK mobile app (desktop may have no fill)'));
             }
         }
         return out;
