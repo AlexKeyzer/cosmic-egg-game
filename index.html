@@ -54,7 +54,7 @@
 
     <script>
     // ====================================================================================
-    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v3.9)
+    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v4.0)
     // Глубокий менеджмент-тайкун: 6 бизнесов с автоматическим производством,
     // склад яиц, биржа с колеблющимися ценами, заказы планет, улучшения,
     // НАУКА и дерево из 24 технологий с таймерами исследований,
@@ -64,12 +64,13 @@
     // Реклама v3.4: interstitial НЕ ЧАЩЕ 1 РАЗА В 3 МИНУТЫ (единый гейт частоты),
     // rewarded через модалку с 30-секундным таймером и наградой только за полный
     // просмотр.
-    // Баннер v3.9: БАННЕР ВИДЕН ВСЕГДА, ID рекламной сети не требуется —
-    // внутри VK это официальный sticky-баннер РС VK, а пока монетизация не
-    // включена (или игра открыта вне VK) — собственный встроенный баннер с честной
-    // пометкой «ТЕСТОВЫЙ БАННЕР». На вкладке «Статус» — блок «Реклама»: мост VK,
-    // платформа запуска и ответ VK на запрос sticky (причина показа заглушки).
-    // Версия игры — на вкладке «Статус» и в консоли.
+    // Баннер v4.0: ТОЛЬКО настоящая реклама, собственных заглушек больше НЕТ —
+    // внутри VK это официальный sticky-баннер РС VK (VKWebAppShowBannerAd); если
+    // VK баннер не выдал (монетизация не включена, нет заполнения) — низ экрана
+    // ПУСТОЙ, sticky запрашивается повторно до 10 раз раз в 60 с. Вне VK —
+    // рекламная сеть из BANNER_CONFIG, без сети — тоже пусто. На вкладке
+    // «Статус» — блок «Реклама»: мост VK, платформа запуска и ответ VK на запрос
+    // sticky. Версия игры — на вкладке «Статус» и в консоли.
     // ====================================================================================
 
     const canvas = document.getElementById('gameCanvas');
@@ -115,46 +116,37 @@
     // включённая монетизация: dev.vk.com → приложение → Монетизация.
     // ADS_DEBUG = true — вне VK показываются ДЕМО-заглушки рекламы (для локальной
     // проверки). Перед публикацией вне VK (например, GitHub Pages) поставьте false.
-    const GAME_VERSION = 'v3.9';
+    const GAME_VERSION = 'v4.0';
     const ADS_ENABLED = true;
     const INTERSTITIAL_INTERVAL = 180;   // секунд между полноэкранными рекламами (3 мин)
     const REWARD_AD_SECS = 30;           // длительность rewarded-ролика (таймер модалки)
     const STICKY_BANNER_H = 56;          // высота нативного sticky-баннера VK (резерв места)
     const ADS_DEBUG = true;
 
-    // Баннерная реклама (низ экрана, v3.9 — баннер виден ВСЕГДА, без ID сети):
+    // Баннерная реклама (низ экрана, v4.0 — только настоящая реклама):
     // • Внутри VK показывается НАТИВНЫЙ sticky-баннер Рекламной сети VK через
     //   официальный метод VKWebAppShowBannerAd (banner_location 'bottom').
     //   ВАЖНО (баг v3.7 исправлен): у VKWebAppShowNativeAds формата 'sticky' НЕТ —
     //   метод принимает только 'reward' и 'interstitial', поэтому прежний вызов
     //   VK отклонял всегда и нативный баннер не показывался никогда.
     //   Сторонние рекламные сети внутри VK запрещены правилами монетизации VK.
-    // • Sticky не выдан (монетизация не включена или нет заполнения) — СРАЗУ
-    //   показывается СОБСТВЕННЫЙ встроенный баннер с честной пометкой
-    //   «ТЕСТОВЫЙ БАННЕР» (v3.8); sticky при этом продолжает запрашиваться
-    //   до 10 раз раз в 60 с (v3.9), после возврата из фона и после закрытия
-    //   баннера пользователем — как только VK выдаст баннер, встроенный
-    //   скрывается. Причина последнего отказа VK видна на вкладке «Статус»
-    //   (блок «Реклама», v3.9). Отключить запас: stickyFallbackDom: false.
-    // • Вне VK (свой сайт / GitHub Pages) сеть НЕ настроена — тот же встроенный
-    //   баннер (demoAuto: true). Рекламная сеть на выбор: Яндекс РСЯ (достаточно
-    //   вписать ID блока), Google AdSense (client + slot) или свой код
-    //   (network: "custom") — тогда вместо тестового покажется настоящая реклама.
-    // • Принудительный демо-режим вёрстки: ?banner_demo=1 (работает и внутри VK).
+    // • Sticky не выдан (монетизация не включена или нет заполнения) — НЕ
+    //   ПОКАЗЫВАЕТСЯ НИЧЕГО: низ экрана пустой (v4.0; встроенных заглушек
+    //   баннера больше нет). sticky при этом продолжает запрашиваться до 10
+    //   раз раз в 60 с, после возврата из фона и после закрытия баннера
+    //   пользователем. Причина последнего отказа VK видна на вкладке
+    //   «Статус» (блок «Реклама», v3.9).
+    // • Вне VK (свой сайт / GitHub Pages): рекламная сеть на выбор — Яндекс РСЯ
+    //   (достаточно вписать ID блока), Google AdSense (client + slot) или свой
+    //   код (network: "custom"). Сеть не настроена — низ экрана пустой.
     const BANNER_CONFIG = {
         enabled: true,             // баннерная реклама включена
         network: "auto",           // "auto" | "yandex" | "adsense" | "custom" | "none"
         yandex:  { blockId: "" },  // Яндекс РСЯ: ID блока, напр. "R-A-1234567-1"
         adsense: { client: "", slot: "" }, // AdSense: "ca-pub-…" и номер слота
         html: "",                  // network "custom": свой код любой сети
-        height: 50,                // высота баннера в px (нижние элементы поднимутся)
-        demoAuto: true,            // вне VK без сети показывать встроенный баннер
-        stickyFallbackDom: true    // v3.8: sticky VK не выдан — встроенный баннер
-                                   // сразу; sticky продолжаем запрашивать
-                                   // (сеть в VK не рендерим: сторонние сети
-                                   // внутри VK запрещены)
+        height: 50                 // высота баннера в px (нижние элементы поднимутся)
     };
-    const BANNER_DEMO = /[?&]banner_demo=1/.test(location.search);
 
     let vk = null;       // vkBridge, если игра запущена внутри VK
     let inVK = false;    // флаг «запущено внутри ВКонтакте»
@@ -352,8 +344,6 @@
                                         bannerVisible = false;
                                         bannerDiag.lastReason = lang === 'ru'
                                             ? 'баннер закрыт пользователем' : 'banner closed by user';
-                                        let el = document.getElementById('bannerAd');
-                                        if (el && BANNER_CONFIG.stickyFallbackDom && !BANNER_DEMO) renderDemoBanner(el, true);
                                         if (stickyTries < STICKY_MAX_TRIES) setTimeout(showBannerAd, 60000);
                                     }
                                 } else if (d.type === 'VKWebAppBannerAdUpdated') {
@@ -416,7 +406,7 @@
                 game.state = 'playing';
                 game.lastTick = Date.now();
                 lastInterstitial = Date.now(); // после возврата в игру — 3 минуты до следующей рекламы
-                if (bannerMode !== 'native' && bannerMode !== 'dom' && bannerMode !== 'demo' && stickyTries < STICKY_MAX_TRIES) showBannerAd(); // ещё попытка sticky (v3.3)
+                if (bannerMode !== 'native' && bannerMode !== 'dom' && stickyTries < STICKY_MAX_TRIES) showBannerAd(); // ещё попытка sticky (v3.3)
             }
         }
     });
@@ -2185,7 +2175,7 @@
 
     function drawStatTab(px, py, pw, ph) {
         let lines = [
-            '🌌 ' + t.gameVersion + ': ' + GAME_VERSION + (BANNER_DEMO ? '  (демо-баннер)' : ''),
+            '🌌 ' + t.gameVersion + ': ' + GAME_VERSION,
             t.statsTotal + ": " + formatNum(game.totalCrystals) + ' 💎',
             t.statsRun + ": " + formatNum(game.runCrystals) + ' 💎',
             t.statsEggs + ": " + formatNum(Math.floor(game.eggsProduced)) + ' 🥚',
@@ -2888,20 +2878,20 @@
     }
 
     // ====================================================================================
-    // 11a. BANNER — баннерная реклама внизу экрана (v3.9: баннер виден ВСЕГДА —
-    //      VK sticky, встроенный баннер как запас, сети для веба)
+    // 11a. BANNER — баннерная реклама внизу экрана (v4.0: только настоящая реклама —
+    //      VK sticky внутри VK, рекламная сеть вне VK; собственных заглушек нет)
     // ====================================================================================
-    let bannerMode = null;   // 'native' — sticky VK, 'dom' — рекламная сеть, 'demo' — демо-баннер
+    let bannerMode = null;   // 'native' — sticky VK, 'dom' — рекламная сеть (веб), null — баннера нет
     let stickyTries = 0;     // сколько раз sticky-баннер не был получен
     const STICKY_MAX_TRIES = 10; // v3.9: до 10 попыток sticky (раз в 60 с ~ 10 минут)
     // v3.9: диагностика рекламы для вкладки «Статус» — что ответил VK на запрос sticky
     let bannerDiag = { plat: '—', bridge: false, attempts: 0, lastAt: '', lastCode: '', lastReason: '', w: 0, h: 0 };
 
     function bannerSafeOffset() {
-        // Нижние элементы игры поднимаются над баннером:
-        // native — резерв под sticky VK (56 px + отступ), dom/demo — под контейнер сети
+        // Нижние элементы игры поднимаются ТОЛЬКО когда баннер реально показан:
+        // native — резерв под sticky VK (56 px + отступ); нет баннера — резерв 0
         if (bannerMode === 'native') return STICKY_BANNER_H + 10;
-        if (bannerMode === 'dom' || bannerMode === 'demo') return BANNER_CONFIG.height + 10;
+        if (bannerMode === 'dom') return BANNER_CONFIG.height + 10;
         return 0;
     }
 
@@ -2922,30 +2912,6 @@
         if (aOk) return 'adsense';
         if (cOk) return 'custom';
         return null;
-    }
-
-    // ВСТРОЕННЫЙ баннер (v3.8): виден ВСЕГДА, ID рекламной сети не нужен.
-    // 1) автоматически — когда настоящая реклама ещё не работает (вне VK нет
-    //    сети; внутри VK sticky не выдан — монетизация не включена);
-    // 2) принудительно — ?banner_demo=1 (служебная проверка вёрстки).
-    // Пометка «ТЕСТОВЫЙ БАННЕР» — честная: это не реклама сети, а место под неё.
-    function renderDemoBanner(el, auto) {
-        bannerMode = 'demo';
-        bannerVisible = true;
-        el.innerHTML = "";
-        el.style.display = "block";
-        positionBannerAd();
-        let d = document.createElement('div');
-        d.style.cssText = "height:" + BANNER_CONFIG.height + "px;line-height:" + BANNER_CONFIG.height +
-            "px;font:600 12px Arial,sans-serif;color:#ffd67a;letter-spacing:.06em;" +
-            "text-align:center;white-space:nowrap;overflow:hidden;" +
-            "background:repeating-linear-gradient(45deg,#141428,#141428 14px,#1b1b36 14px,#1b1b36 28px);";
-        d.textContent = (lang === 'ru')
-            ? (auto ? "РЕКЛАМА · ТЕСТОВЫЙ БАННЕР — здесь появится реклама"
-                   : "РЕКЛАМА · ТЕСТОВЫЙ БАННЕР — демо проверки вёрстки (?banner_demo=1)")
-            : (auto ? "AD · TEST BANNER — ads will appear here"
-                   : "AD · TEST BANNER — layout check demo (?banner_demo=1)");
-        el.appendChild(d);
     }
 
     // Рендер настроенной рекламной сети в контейнере #bannerAd (веб-версия)
@@ -3009,26 +2975,17 @@
         }
     }
 
-    // Снизу — баннерная реклама (v3.9, баннер виден ВСЕГДА, ID сети не нужен):
+    // Снизу — баннерная реклама (v4.0 — ТОЛЬКО настоящая реклама, без заглушек):
     // • внутри VK — официальный sticky-баннер Рекламной сети VK (VKWebAppShowBannerAd,
     //   bottom/overlay); нет заполнения — до 10 повторных запросов раз в 60 с
-    //   (v3.9; также по возврату из фона и после закрытия баннера игроком);
-    // • sticky не выдан — СРАЗУ встроенный баннер «ТЕСТОВЫЙ БАННЕР» (v3.8);
-    //   когда sticky всё же выдан — встроенный скрывается, рисует VK;
+    //   (также по возврату из фона и после закрытия баннера игроком), при этом
+    //   НИЧЕГО не рисуется: низ экрана остаётся пустым, пока VK не выдаст баннер;
     // • вне VK — настроенная рекламная сеть (Яндекс РСЯ / AdSense / свой код),
-    //   а без сети — тот же встроенный баннер (demoAuto);
-    // • ?banner_demo=1 — принудительный демо-баннер (проверка вёрстки).
+    //   без сети — низ экрана тоже пустой.
     async function showBannerAd() {
         if (!BANNER_CONFIG.enabled) { console.log("[Banner] выключен (BANNER_CONFIG.enabled = false)"); return; }
         let el = document.getElementById('bannerAd');
         if (!el) return;
-
-        // Принудительный демо-режим вёрстки — перекрывает остальные варианты
-        if (BANNER_DEMO) {
-            console.log("[Banner] демо-режим ?banner_demo=1 — тестовый баннер для проверки вёрстки");
-            renderDemoBanner(el, false);
-            return;
-        }
 
         if (vk && adsUI) {
             // v3.9: диагностика — платформа запуска и счётчик попыток для «Статуса»
@@ -3061,8 +3018,11 @@
                     (bannerDiag.w ? " " + bannerDiag.w + "x" + bannerDiag.h : ""));
                 return;
             } catch (e) {
-                // v3.9: причина отказа видна на вкладке «Статус», полный payload — в консоли
+                // v3.9: причина отказа видна на вкладке «Статус», полный payload — в консоли.
+                // v4.0: никаких встроенных заглушек — низ экрана остаётся ПУСТЫМ,
+                // sticky запрашивается повторно (до 10 раз раз в 60 с).
                 let d = e && e.error_data ? e.error_data : e;
+                if (bannerMode !== 'native') { bannerVisible = false; el.style.display = 'none'; }
                 bannerDiag.lastCode = d && d.error_code != null ? d.error_code : '';
                 bannerDiag.lastReason = (d && (d.error_reason || d.error_description)) ||
                     (e && e.message) || 'нет ответа VK';
@@ -3072,25 +3032,15 @@
                     console.log("[Banner] повторный запрос sticky через 60 с (" + stickyTries + "/" + STICKY_MAX_TRIES + ")");
                     setTimeout(showBannerAd, 60000);
                 }
-                if (!BANNER_CONFIG.stickyFallbackDom) return; // запас выключен — низ чистый
-                console.log("[Banner] показываю встроенный баннер, sticky продолжаю запрашивать");
+                return;
             }
         }
         if (bannerMode === 'native') return;
 
-        // Веб-версия (или fallback в VK при stickyFallbackDom): настроенная сеть
+        // Веб-версия: настроенная рекламная сеть (Яндекс РСЯ / AdSense / свой код)
         let net = bannerNetwork();
         if (!net) {
-            // Сети нет: встроенный баннер везде (v3.8) — вне VK по demoAuto,
-            // внутри VK после неудачи sticky (stickyFallbackDom)
-            if (BANNER_CONFIG.demoAuto && (!inVK || BANNER_CONFIG.stickyFallbackDom)) {
-                console.log("[Banner] рекламная сеть не подключена — показан встроенный " +
-                    "баннер (ТЕСТОВЫЙ). Настоящая реклама: VK — включить монетизацию " +
-                    "(dev.vk.com → приложение → Монетизация); веб — вписать сеть в BANNER_CONFIG");
-                renderDemoBanner(el, true);
-            } else {
-                console.log("[Banner] рекламная сеть не настроена — низ экрана чистый");
-            }
+            console.log("[Banner] рекламная сеть не настроена — низ экрана чистый (без заглушек, v4.0)");
             return;
         }
         console.log("[Banner] веб-сеть:", net, "— рендер в #bannerAd");
@@ -3107,8 +3057,9 @@
         el.style.bottom = "0px";
     }
 
-    // v3.9: строки диагностики рекламы для вкладки «Статус» — чтобы причина,
-    // по которой показан тестовый баннер, была видна прямо в игре (без консоли)
+    // v3.9/v4.0: строки диагностики рекламы для вкладки «Статус» — мост VK,
+    // платформа, ответ VK на запрос sticky и текущий режим баннера — прямо
+    // в игре, без консоли
     function adDiagLines() {
         let bd = bannerDiag, out = [];
         let where = bd.bridge ? 'VK Bridge ✓' : (lang === 'ru' ? 'вне VK' : 'outside VK');
@@ -3132,7 +3083,9 @@
             ? (lang === 'ru' ? 'настоящий VK-баннер' : 'real VK banner')
             : bannerMode === 'dom'
                 ? (lang === 'ru' ? 'рекламная сеть' : 'ad network')
-                : (lang === 'ru' ? 'встроенный (ТЕСТОВЫЙ)' : 'built-in (TEST)');
+                : (lang === 'ru'
+                    ? (inVK ? 'нет баннера (ожидание VK)' : 'нет баннера')
+                    : (inVK ? 'no banner (waiting for VK)' : 'no banner'));
         out.push('📺 ' + (lang === 'ru' ? 'Реклама' : 'Ads') + ': ' + where + ' · ' + plat +
             (bd.attempts ? '  ·  ' + bd.attempts + (lang === 'ru' ? ' попыт.' : ' tries') : ''));
         out.push('   ' + resp + (bd.lastAt && bannerMode !== 'native' ? '  ·  ' + bd.lastAt : ''));
