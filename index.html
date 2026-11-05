@@ -54,7 +54,7 @@
 
     <script>
     // ====================================================================================
-    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v4.0)
+    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v4.1)
     // Глубокий менеджмент-тайкун: 6 бизнесов с автоматическим производством,
     // склад яиц, биржа с колеблющимися ценами, заказы планет, улучшения,
     // НАУКА и дерево из 24 технологий с таймерами исследований,
@@ -70,7 +70,9 @@
     // ПУСТОЙ, sticky запрашивается повторно до 10 раз раз в 60 с. Вне VK —
     // рекламная сеть из BANNER_CONFIG, без сети — тоже пусто. На вкладке
     // «Статус» — блок «Реклама»: мост VK, платформа запуска и ответ VK на запрос
-    // sticky. Версия игры — на вкладке «Статус» и в консоли.
+    // sticky. Реклама v4.1: перед показом роликов — предзагрузка материалов
+    // (VKWebAppCheckNativeAds) и честные тосты, если VK отказал. Версия игры —
+    // на вкладке «Статус» и в консоли.
     // ====================================================================================
 
     const canvas = document.getElementById('gameCanvas');
@@ -116,7 +118,14 @@
     // включённая монетизация: dev.vk.com → приложение → Монетизация.
     // ADS_DEBUG = true — вне VK показываются ДЕМО-заглушки рекламы (для локальной
     // проверки). Перед публикацией вне VK (например, GitHub Pages) поставьте false.
-    const GAME_VERSION = 'v4.0';
+    // Реклама v4.1: предзагрузка рекламных материалов — официальная рекомендация
+    // VK (dev.vk.com «Как добавить рекламу в мини-приложение»): перед показом
+    // reward/interstitial нужно вызвать VKWebAppCheckNativeAds, иначе VK может
+    // быть нечего показывать («нажатие кнопки ни к чему не приведёт»). Проверка
+    // идёт при старте и раз в 90 с; при отказе VK (например, 1208 «monetization
+    // disabled» — монетизация не включена в панели) игрок получает честный тост,
+    // а вкладка «Статус» показывает строку Rewarded и подсказку про монетизацию.
+    const GAME_VERSION = 'v4.1';
     const ADS_ENABLED = true;
     const INTERSTITIAL_INTERVAL = 180;   // секунд между полноэкранными рекламами (3 мин)
     const REWARD_AD_SECS = 30;           // длительность rewarded-ролика (таймер модалки)
@@ -203,6 +212,8 @@
             adWatch: "Смотреть рекламу",
             adLater: "Позже",
             adEarlyClose: "Ролик закрыт раньше — награды не будет",
+            adLoading: "Реклама ещё загружается — попробуйте через минуту",
+            adUnavailable: "Реклама сейчас недоступна — попробуйте позже",
             statsTotal: "Всего кристаллов", statsRun: "Заработано за забег", statsEggs: "Произведено яиц",
             statsSold: "Продано яиц", statsContracts: "Выполнено заказов", statsEvents: "Событий поймано",
             statsMgrs: "Менеджеров в команде", statsTime: "Время в игре", statsPrestiges: "Больших взрывов",
@@ -265,6 +276,8 @@
             adWatch: "Watch ad",
             adLater: "Later",
             adEarlyClose: "Video closed early — no reward",
+            adLoading: "The ad is still loading — try again in a minute",
+            adUnavailable: "Ads are unavailable right now — try again later",
             statsTotal: "Total crystals", statsRun: "Earned this run", statsEggs: "Eggs produced",
             statsSold: "Eggs sold", statsContracts: "Orders completed", statsEvents: "Events caught",
             statsMgrs: "Managers on the team", statsTime: "Play time", statsPrestiges: "Big Bangs",
@@ -364,6 +377,20 @@
             console.error("VK Bridge init error:", e);
         }
         adsUI = ADS_ENABLED && inVK;
+
+        // v4.1: предзагрузка рекламных материалов (VKWebAppCheckNativeAds) —
+        // по документации VK без неё кнопка «Смотреть рекламу» может ни к чему
+        // не привести: VK-мосту нечего показывать. Проверка при старте и раз в 90 с.
+        if (vk && adsUI) {
+            vkCheckAds('reward');
+            vkCheckAds('interstitial');
+            setInterval(function () {
+                if (vk && adsUI && document.visibilityState !== 'hidden') {
+                    vkCheckAds('reward');
+                    vkCheckAds('interstitial');
+                }
+            }, 90000);
+        }
 
         // v3.8: версия и рекламный режим — сразу видно в консоли, что открыто
         console.log("🌌 Cosmic Egg: Space Empire " + GAME_VERSION + " · режим: " +
@@ -2760,10 +2787,20 @@
         if (Date.now() - lastInterstitial < INTERSTITIAL_INTERVAL * 1000) return;
         lastInterstitial = Date.now();
         if (vk && adsUI) {
+            // v4.1: материалы interstitial ещё не загружены — попытку не тратим,
+            // следующее срабатывание гейта попробует снова (проверка идёт по таймеру)
+            if (adPreload.interstitial === false) {
+                console.log("[Ads] VK: interstitial пропущен — материалы ещё не готовы");
+                game.lastTick = Date.now();
+                return;
+            }
             try {
                 await vk.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' });
             } catch (e) {
-                console.log("Interstitial error:", e);
+                let er = adErrText(e);
+                adPreload.lastCode = er.code;
+                adPreload.lastReason = er.reason;
+                console.log("Interstitial error: [" + er.code + "] " + er.reason);
             }
         } else if (ADS_DEBUG && !inVK) {
             game.state = 'paused';
@@ -2818,15 +2855,34 @@
         game.modal = null;
         let type = game.adRewardType;
         let rewarded = false;
+        let toastShown = false; // v4.1: честный тост уже показан — «ролик закрыт раньше» не нужен
         game.state = 'paused';
         if (vk && adsUI) {
             try {
-                // Награда только за полный просмотр: VK Bridge возвращает result:true,
-                // если ролик досмотрен; крестик плеера / ранний выход → false или ошибка.
-                let res = await vk.send('VKWebAppShowNativeAds', { ad_format: 'reward' });
-                rewarded = (res === true) || !!(res && res.result === true);
+                // v4.1: по документации VK перед показом — VKWebAppCheckNativeAds,
+                // иначе Show может быть нечего показывать (нажатие «ни к чему не приведёт»)
+                if (adPreload.reward !== true) await vkCheckAds('reward');
+                if (adPreload.reward === false) {
+                    // VK не дал материалы: монетизация не включена (1208) или загрузка не готова
+                    rewarded = false;
+                    toastShown = true;
+                    pushToast('📺 ' + (/1208|monetization/i.test(adPreload.lastCode + ' ' + adPreload.lastReason)
+                        ? t.adUnavailable : t.adLoading));
+                } else {
+                    // Награда только за полный просмотр: VK Bridge возвращает result:true,
+                    // если ролик досмотрен; крестик плеера / ранний выход → false или ошибка.
+                    let res = await vk.send('VKWebAppShowNativeAds', { ad_format: 'reward' });
+                    rewarded = (res === true) || !!(res && res.result === true);
+                }
             } catch (e) {
-                console.log("Rewarded error:", e);
+                let er = adErrText(e);
+                adPreload.lastCode = er.code;
+                adPreload.lastReason = er.reason;
+                adPreload.lastAt = adNowTime();
+                console.log("Rewarded error: [" + er.code + "] " + er.reason);
+                rewarded = false;
+                toastShown = true;
+                pushToast('📺 ' + t.adUnavailable);
             }
         } else if (ADS_DEBUG && !inVK) {
             await showDemoOverlay("РЕКЛАМА · " + REWARD_AD_SECS + " СЕК", 2.2);
@@ -2837,7 +2893,7 @@
         game.state = 'playing';
         game.lastTick = Date.now();
         if (rewarded) grantReward(type);
-        else pushToast('📺 ' + t.adEarlyClose);
+        else if (!toastShown) pushToast('📺 ' + t.adEarlyClose);
     }
 
     function spinRoulette() {
@@ -2886,6 +2942,42 @@
     const STICKY_MAX_TRIES = 10; // v3.9: до 10 попыток sticky (раз в 60 с ~ 10 минут)
     // v3.9: диагностика рекламы для вкладки «Статус» — что ответил VK на запрос sticky
     let bannerDiag = { plat: '—', bridge: false, attempts: 0, lastAt: '', lastCode: '', lastReason: '', w: 0, h: 0 };
+
+    // v4.1: предзагрузка рекламных материалов — VKWebAppCheckNativeAds (reward /
+    // interstitial) при старте и раз в 90 с. Без неё VK может нечего показывать
+    // по кнопке «Смотреть рекламу». Готовность и последняя ошибка VK — на «Статусе».
+    let adPreload = { reward: null, interstitial: null, lastAt: '', lastCode: '', lastReason: '' };
+
+    function adNowTime() {
+        let t0 = new Date();
+        return ('0' + t0.getHours()).slice(-2) + ':' + ('0' + t0.getMinutes()).slice(-2);
+    }
+
+    function adErrText(e) {
+        // VK Bridge бросает {error_type, error_data: {error_code, error_reason}} или похожее
+        let d = e && e.error_data ? e.error_data : (e || {});
+        return {
+            code: d.error_code !== undefined ? String(d.error_code) : (d.code !== undefined ? String(d.code) : ''),
+            reason: String(d.error_reason || d.error_description || d.reason || (e && e.message) || '')
+        };
+    }
+
+    async function vkCheckAds(format) {
+        if (!vk || !adsUI) return;
+        try {
+            let res = await vk.send('VKWebAppCheckNativeAds', { ad_format: format });
+            adPreload[format] = (res === true) || !!(res && res.result === true);
+            adPreload.lastAt = adNowTime();
+            console.log("[Ads] VK: материалы " + format + (adPreload[format] ? " загружены" : " пока не готовы"));
+        } catch (e) {
+            adPreload[format] = false;
+            let er = adErrText(e);
+            adPreload.lastCode = er.code;
+            adPreload.lastReason = er.reason;
+            adPreload.lastAt = adNowTime();
+            console.log("[Ads] VK: отказ проверки " + format + " [" + er.code + "] " + er.reason);
+        }
+    }
 
     function bannerSafeOffset() {
         // Нижние элементы игры поднимаются ТОЛЬКО когда баннер реально показан:
@@ -3090,6 +3182,28 @@
             (bd.attempts ? '  ·  ' + bd.attempts + (lang === 'ru' ? ' попыт.' : ' tries') : ''));
         out.push('   ' + resp + (bd.lastAt && bannerMode !== 'native' ? '  ·  ' + bd.lastAt : ''));
         out.push('   ' + (lang === 'ru' ? 'сейчас: ' : 'now: ') + nowTxt);
+        // v4.1: состояние rewarded-материалов и последняя ошибка VK
+        if (inVK) {
+            let ap = adPreload, rew;
+            if (ap.lastCode !== '') {
+                let r = String(ap.lastReason || '');
+                if (r.length > 24) r = r.slice(0, 24) + '…';
+                rew = 'VK: ' + (lang === 'ru' ? 'отказ ' : 'refused ') + '[' + ap.lastCode + '] ' + r;
+            } else if (ap.reward === true) {
+                rew = lang === 'ru' ? 'VK: материалы загружены' : 'VK: materials ready';
+            } else if (ap.lastAt !== '') {
+                rew = lang === 'ru' ? 'VK: материалов пока нет' : 'VK: no materials yet';
+            } else {
+                rew = lang === 'ru' ? 'материалы проверяются' : 'checking materials';
+            }
+            out.push('   🎁 Rewarded: ' + rew);
+            // подсказка при отказе «монетизация не включена» (код 1208) — sticky или reward
+            if (/1208|monetization/i.test(bd.lastCode + ' ' + bd.lastReason + ' ' + ap.lastCode + ' ' + ap.lastReason)) {
+                out.push('   → ' + (lang === 'ru'
+                    ? 'включите монетизацию: dev.vk.com → приложение → Настройки → Монетизация'
+                    : 'enable monetization: dev.vk.com → app → Settings → Monetization'));
+            }
+        }
         return out;
     }
 
