@@ -3509,6 +3509,111 @@
         showBannerAd: showBannerAd, bannerSafeOffset: bannerSafeOffset, bannerNetwork: bannerNetwork };
     window.__adsCfg = { interval: INTERSTITIAL_INTERVAL, rewardSecs: REWARD_AD_SECS, stickyH: STICKY_BANNER_H };
     </script>
+    <!-- ====== CE VK-ADS FIX: вставить ПЕРЕД </body> ====== -->
+<script>
+(function () {
+  'use strict';
+  if (window.CE_ADS) return;
+  var bypass = false;
+
+  function bridge() {
+    if (window.vkBridge && window.vkBridge.send) return window.vkBridge;
+    if (window.bridge && window.bridge.send) return window.bridge;
+    return null;
+  }
+
+  /* ЕДИНСТВЕННАЯ точка запуска рекламы — только официальная реклама ВК */
+  function showRewardAd(onReward, onFail) {
+    var br = bridge(), done = false;
+    var ok  = function () { if (!done) { done = true; onReward && onReward(); } };
+    var bad = function () { if (!done) { done = true; onFail  && onFail();  } };
+    if (!br) { bad(); return; } /* вне ВК: ничего не показываем */
+    try {
+      br.send('VKWebAppShowNativeAds', { ad_format: 'reward' })
+        .then(function (r) { (r && r.result === true) ? ok() : bad(); })
+        .catch(function () {
+          br.send('VKWebAppShowRewardedVideoBox', {})
+            .then(function (r) { (r && (r.result === true || r.success)) ? ok() : bad(); })
+            .catch(bad);
+        });
+    } catch (e) { bad(); }
+  }
+
+  /* Вместо крестика — таймер 30 секунд (только внутри рекламных слоёв) */
+  var ADSEL = '[id*="banner"],[class*="banner"],[id*="ad"],[class*="ad-"],[class*="-ad"],[id*="reward"],[class*="reward"],[id*="overlay"],[class*="overlay"]';
+  function timerize(root) {
+    if (!root || !root.querySelectorAll) return;
+    var boxes = (root.matches && root.matches(ADSEL)) ? [root] : [].slice.call(root.querySelectorAll(ADSEL));
+    boxes.forEach(function (box) {
+      [].slice.call(box.querySelectorAll('button,div,span,b,i')).forEach(function (el) {
+        if (el.dataset.ceTimer === '1') return;
+        var cls = el.id + ' ' + (el.className || '');
+        var isX = el.textContent.trim() === '✕' || el.textContent.trim() === '×' || el.textContent.trim() === 'X'
+               || /(^|\s|[-_])(close|cross|крест|закр)/i.test(cls);
+        if (!isX) return;
+        el.dataset.ceTimer = '1';
+        var left = 30;
+        el.textContent = left;
+        el.style.pointerEvents = 'none';
+        el.style.cursor = 'default';
+        el.onclick = null;
+        var iv = setInterval(function () {
+          left--;
+          if (left <= 0) { clearInterval(iv); el.style.display = 'none'; }
+          else el.textContent = left;
+        }, 1000);
+      });
+    });
+  }
+
+  /* Уборка: "тестовый баннер", метки РЕКЛАМА, версия игры, дата */
+  var BAD = /(тестов|реклама\s*[·•\-–—]|\bv\s?3\.\d+|версия|20\d{2}[-.\/]\d{2}[-.\/]\d{2}|\d{2}[.\/]\d{2}[.\/]20\d{2})/i;
+  function sweep() {
+    if (!document.body) return;
+    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false), hits = [];
+    while (w.nextNode()) { var n = w.currentNode; if (n.nodeValue && BAD.test(n.nodeValue)) hits.push(n); }
+    hits.forEach(function (n) {
+      var el = n.parentElement; if (!el || el.dataset.ceHide === '1') return;
+      var box = el;
+      for (var i = 0; i < 3 && box.parentElement; i++) {
+        if (/(banner|ver|date|footer|label|tag|hud)/i.test((box.id || '') + ' ' + (box.className || ''))) break;
+        box = box.parentElement;
+      }
+      box.dataset.ceHide = '1';
+      box.style.setProperty('display', 'none', 'important');
+    });
+  }
+
+  /* Кнопка награды: сначала ТОЛЬКО реклама ВК, ничего лишнего не открывается */
+  var RE = /(реклам|reward|за\s+просмотр)/i, EX = /(дневн|ежедневн)/i;
+  document.addEventListener('click', function (e) {
+    if (bypass) return;
+    var el = e.target && e.target.closest ? e.target.closest('button,.btn,[class*="btn"],[class*="button"],[onclick],a') : null;
+    if (!el) return;
+    var t = (el.textContent || '').trim();
+    if (!RE.test(t) || EX.test(t)) return;
+    e.preventDefault(); e.stopPropagation();
+    showRewardAd(function () {
+      bypass = true;                 /* после досмотра — награда логикой игры */
+      try { el.click(); } catch (err) {}
+      bypass = false;
+      timerize(document.body); sweep();
+    }, function () { /* реклама не вызвалась — ничего не показываем */ });
+  }, true);
+
+  function boot() {
+    sweep(); timerize(document.body);
+    new MutationObserver(function () { sweep(); timerize(document.body); })
+      .observe(document.body, { childList: true, subtree: true });
+    setInterval(sweep, 2000);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  window.CE_ADS = { reward: showRewardAd };
+})();
+</script>
+<!-- ====== /CE VK-ADS FIX ====== -->
 </body>
 </html>
 
