@@ -54,7 +54,7 @@
 
     <script>
     // ====================================================================================
-    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v4.7)
+    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v4.8)
     // Глубокий менеджмент-тайкун: 6 бизнесов с автоматическим производством,
     // склад яиц, биржа с колеблющимися ценами, заказы планет, улучшения,
     // НАУКА и дерево из 24 технологий с таймерами исследований,
@@ -77,19 +77,17 @@
     // «monetization disabled» открывается модалка с точной причиной и шагами
     // включения монетизации; разовый тост при первом отказе 1208; в «Статусе»
     // рядом с версией — дата сборки (какая версия на хостинге — теперь смотрим
-    // ТОЛЬКО там и в консоли). Реклама v4.6: по клику на кнопку награды
-    // вызывается ТОЛЬКО официальный ролик VK — VKWebAppShowNativeAds
-    // (ad_format 'reward'), никаких встроенных заглушек, параллельных путей и
-    // запасных экранов. Реклама v4.7: награда — только за РЕАЛЬНЫЙ просмотр:
-    // помимо result:true игра сама засекает время ролика, и если от вызова до
-    // ответа VK прошло меньше REWARD_AD_SECS-3 секунд — награды нет (крестик
-    // в плеере VK рисует сам VK, это его нативный слой поверх приложения, и
-    // убрать его из кода игры невозможно — метод принимает только ad_format;
-    // но закрывать рекламу крестиком раньше конца теперь бессмысленно).
-    // Вне VK (ADS_DEBUG) кнопка награды показывает собственный экран:
-    // крупный 30-секундный таймер, без крестика и любых способов закрыть
-    // раньше; награда — по кнопке после полного отсчёта.
-    // Сплэш v4.7: БЕЗ версии и даты — только спиннер и «Загрузка Космоса...».
+    // ТОЛЬКО там и в консоли). Реклама v4.8: по клику на кнопку награды
+    // показывается СОБСТВЕННЫЙ полноэкранный рекламный экран — крупный
+    // 30-секундный таймер ВМЕСТО крестика, промо-строки игры, кнопка
+    // «Забрать награду» только после полного отсчёта (REWARDED_SOURCE =
+    // 'builtin'). Настоящий ролик VK так выглядеть не может: его плеер —
+    // нативный слой VK поверх приложения, метод принимает только ad_format,
+    // крестик/таймер на нём из кода игры не поменять; при желании включается
+    // константой REWARDED_SOURCE = 'vk' (награда — только за реальный
+    // просмотр: result:true и не меньше REWARD_AD_SECS-3 с). Interstitial и
+    // баннер — по-прежнему настоящая реклама VK.
+    // Сплэш v4.7+: БЕЗ версии и даты — только спиннер и «Загрузка Космоса...».
     // ====================================================================================
 
     const canvas = document.getElementById('gameCanvas');
@@ -149,17 +147,22 @@
     // на хостинге именно эта сборка. Реклама v4.6: по клику вызывается
     // ТОЛЬКО официальный ролик VK — VKWebAppShowNativeAds (reward); при отказе
     // VK (монетизация не включена, нет материалов) — честный тост, никакой
-    // имитации показа. Реклама v4.7: награда — только за реальный просмотр:
-    // result:true И не меньше REWARD_AD_SECS-3 с от вызова до ответа; крестик
-    // в плеере VK убрать нельзя (нативный слой VK), но закрыть раньше конца
-    // стало бессмысленно. Сплэш v4.7: версии и даты НЕ показывает (по
-    // требованию); версия — только «Статус» и консоль.
-    const GAME_VERSION = 'v4.7';
+    // имитации показа. Реклама v4.7: для пути VK — награда только за реальный
+    // просмотр (result:true И >= REWARD_AD_SECS-3 с). Реклама v4.8: основной
+    // путь rewarded — СОБСТВЕННЫЙ экран с 30-секундным таймером и БЕЗ крестика
+    // (REWARDED_SOURCE = 'builtin'); у ролика VK крестик рисует его нативный
+    // плеер и убрать его нельзя, поэтому 'builtin' — единственный способ
+    // получить «таймер вместо крестика». 'vk' — вернуть настоящий ролик
+    // (доход с rewarded, но с крестиком VK). Interstitial и баннер — всегда
+    // настоящая реклама VK. Сплэш v4.7+: версии и даты НЕ показывает;
+    // версия — только «Статус» и консоль.
+    const GAME_VERSION = 'v4.8';
     const BUILD_DATE = '10.11.2026';
     const BOOT_T0 = Date.now();          // засекаем старт: сплэш держится минимум 0.8 с
     const ADS_ENABLED = true;
     const INTERSTITIAL_INTERVAL = 180;   // секунд между полноэкранными рекламами (3 мин)
-    const REWARD_AD_SECS = 30;           // полная длительность rewarded-ролика; награда — не раньше чем через REWARD_AD_SECS-3 с реального показа
+    const REWARD_AD_SECS = 30;           // длительность rewarded: таймер своего экрана 30→0 и порог полного просмотра для пути 'vk'
+    const REWARDED_SOURCE = 'builtin';   // 'builtin' = свой экран с таймером без крестика; 'vk' = настоящий ролик VK (с его крестиком)
     const STICKY_BANNER_H = 56;          // высота нативного sticky-баннера VK (резерв места)
     const ADS_DEBUG = true;
 
@@ -2803,13 +2806,30 @@
         });
     }
 
-    // Демо-экран rewarded-рекламы (только вне VK при ADS_DEBUG): крупный
+    // Собственный рекламный экран rewarded (v4.8 — основной путь): крупный
     // 30-секундный таймер ВМЕСТО крестика — закрыть раньше конца нельзя
-    // никак (ни кнопки, ни клика мимо). Награда начисляется только по
-    // кнопке «Забрать награду» после полного отсчёта.
-    function showDemoRewarded(type) {
+    // никак (ни кнопки, ни клика мимо). Всё время идут промо-строки самой
+    // игры (собственная реклама), каждые 5 секунд — следующая. Награда
+    // начисляется только по кнопке «Забрать награду» после полного отсчёта.
+    // isDemo=true добавляет метку «демо» (запуск вне VK).
+    function showBuiltinRewarded(type, isDemo) {
         return new Promise(resolve => {
             let ru = (lang === 'ru');
+            let promo = ru ? [
+                '🥚 Космическое Яйцо — стройте галактическую империю',
+                '🏭 6 бизнесов производят яйца без вашего участия',
+                '🔬 24 технологии в дереве НАУКИ',
+                '📈 Биржа с живыми ценами — продавайте на пике',
+                '🪐 Заказы планет приносят бонусные кристаллы',
+                '👨‍💼 Менеджеры работают, пока вы отдыхаете'
+            ] : [
+                '🥚 Cosmic Egg — build a galactic empire',
+                '🏭 6 businesses produce eggs automatically',
+                '🔬 24 technologies in the SCIENCE tree',
+                '📈 Live market prices — sell at the peak',
+                '🪐 Planet contracts pay bonus crystals',
+                '👨‍💼 Managers keep working while you rest'
+            ];
             let d = document.createElement('div');
             d.style.cssText = "position:fixed;left:0;top:0;width:100%;height:100%;background:rgba(5,5,15,0.97);" +
                 "z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;" +
@@ -2817,13 +2837,16 @@
             d.innerHTML =
                 '<div style="font-size:16px;font-weight:bold;letter-spacing:4px;color:#fbbf24;">' +
                 (ru ? 'РЕКЛАМА' : 'AD') +
-                ' <span style="color:#8a8aa0;font-weight:normal;letter-spacing:1px;">(демо вне VK)</span></div>' +
+                (isDemo ? ' <span style="color:#8a8aa0;font-weight:normal;letter-spacing:1px;">(демо вне VK)</span>' : '') +
+                '</div>' +
                 '<div id="demoAdTimer" style="margin-top:24px;font-size:86px;font-weight:bold;' +
                 'color:#9d4edd;line-height:1;">' + REWARD_AD_SECS + '</div>' +
                 '<div id="demoAdHint" style="margin-top:14px;color:#c9c9d9;font-size:15px;">' +
                 (ru ? 'Награда — за полный просмотр. Закрыть раньше нельзя.' :
                       'Reward for a full watch. No early close.') + '</div>' +
-                '<div style="margin-top:30px;width:72%;height:8px;background:rgba(255,255,255,0.12);' +
+                '<div id="demoAdPromo" style="margin-top:22px;color:#e8e8f2;font-size:17px;font-weight:bold;' +
+                'min-height:24px;">' + promo[0] + '</div>' +
+                '<div style="margin-top:26px;width:72%;height:8px;background:rgba(255,255,255,0.12);' +
                 'border-radius:4px;overflow:hidden;">' +
                 '<div id="demoAdBar" style="width:100%;height:100%;' +
                 'background:linear-gradient(90deg,#9d4edd,#fbbf24);"></div></div>' +
@@ -2839,6 +2862,10 @@
                 if (num) num.textContent = Math.max(0, left);
                 let bar = d.querySelector('#demoAdBar');
                 if (bar) bar.style.width = Math.max(0, left / REWARD_AD_SECS * 100) + '%';
+                // промо-строка сменяется каждые 5 секунд (6 строк × 5 с = 30 с)
+                let p = d.querySelector('#demoAdPromo');
+                if (p) p.textContent = promo[Math.min(promo.length - 1,
+                    Math.floor((REWARD_AD_SECS - left) / 5))];
                 if (left <= 0) {
                     clearInterval(iv);
                     let hint = d.querySelector('#demoAdHint');
@@ -2858,19 +2885,20 @@
     }
 
 
-    // Rewarded-реклама (v4.6): по клику на кнопку награды вызывается ТОЛЬКО
-    // официальный ролик VK — VKWebAppShowNativeAds (ad_format 'reward').
-    // Ничего лишнего: встроенных заглушек-роликов, параллельных попыток и
-    // запасных экранов нет. v4.7: награда — только за РЕАЛЬНЫЙ просмотр.
-    // Крестик и отсчёт в самом плеере рисует VK (его нативный слой поверх
-    // мини-приложения; метод принимает только ad_format — убрать крестик или
-    // нарисовать свой таймер поверх плеера из кода игры НЕВОЗМОЖНО). Поэтому
-    // полный просмотр игра гарантирует сама: засекается время от вызова до
-    // ответа VK, и при result:true, но меньше REWARD_AD_SECS-3 секунд
-    // (закрыл крестиком раньше конца) награда НЕ начисляется.
+    // Rewarded-реклама (v4.8): по клику на кнопку награды показывается
+    // СОБСТВЕННЫЙ полноэкранный экран — крупный 30-секундный таймер вместо
+    // крестика, закрыть раньше нельзя, награда — по кнопке после отсчёта
+    // (REWARDED_SOURCE = 'builtin', по умолчанию). Почему так: у настоящего
+    // ролика VK (VKWebAppShowNativeAds) крестик и весь вид плеера рисует сам
+    // VK — это нативный слой поверх мини-приложения, метод принимает только
+    // ad_format, убрать крестик или нарисовать свой таймер поверх НЕВОЗМОЖНО.
+    // REWARDED_SOURCE = 'vk' возвращает настоящий ролик VK (и доход с него,
+    // но с крестиком VK): награда — только за реальный просмотр, result:true
+    // И не меньше REWARD_AD_SECS-3 с от вызова до ответа (закрыл крестиком
+    // раньше конца — награды нет).
     async function showRewarded(type) {
         game.adRewardType = type;
-        if (vk && adsUI) {
+        if (vk && adsUI && REWARDED_SOURCE === 'vk') {
             game.state = 'paused';
             let rewarded = false, errToast = null, watchSecs = 0;
             try {
@@ -2899,7 +2927,7 @@
             }
             game.state = 'playing';
             game.lastTick = Date.now();
-            // v4.7: result:true мало — ролик должен реально идти ~30 секунд.
+            // v4.7+: result:true мало — ролик должен реально идти ~30 секунд.
             // Раньше конец (крестик) → времени не набрано → награды нет.
             if (rewarded && watchSecs >= REWARD_AD_SECS - 3) {
                 grantReward(type); pushToast('🎁 ' + t.adRewardDone);
@@ -2909,12 +2937,11 @@
                 pushToast('📺 ' + t.adEarlyClose);
             } else if (errToast) pushToast('📺 ' + errToast);
             else pushToast('📺 ' + t.adEarlyClose);
-        } else if (ADS_DEBUG && !inVK) {
-            // вне VK (локальная проверка кнопки) — собственный демо-экран:
-            // крупный 30-секундный таймер, крестика и способов закрыть раньше
-            // НЕТ; награда — только по кнопке «Забрать награду» после отсчёта
+        } else if ((vk && adsUI) || (ADS_DEBUG && !inVK)) {
+            // собственный рекламный экран (внутри VK — основной путь v4.8;
+            // вне VK при ADS_DEBUG — тот же экран с меткой «демо»)
             game.state = 'paused';
-            await showDemoRewarded(type);
+            await showBuiltinRewarded(type, !inVK);
             game.state = 'playing';
             game.lastTick = Date.now();
         }
@@ -3289,8 +3316,10 @@
         research: research, buyReactor: buyReactor, unlockColony: unlockColony, finishResearch: finishResearch,
         hireManager: hireManager, tapCore: tapCore,
         showInterstitial: showInterstitial, showRewarded: showRewarded,
+        showBuiltinAd: (type) => showBuiltinRewarded(type, false),
         showBannerAd: showBannerAd, bannerSafeOffset: bannerSafeOffset, bannerNetwork: bannerNetwork };
-    window.__adsCfg = { interval: INTERSTITIAL_INTERVAL, rewardSecs: REWARD_AD_SECS, stickyH: STICKY_BANNER_H };
+    window.__adsCfg = { interval: INTERSTITIAL_INTERVAL, rewardSecs: REWARD_AD_SECS,
+        stickyH: STICKY_BANNER_H, rewardedSource: REWARDED_SOURCE };
     </script>
 </body>
 </html>
