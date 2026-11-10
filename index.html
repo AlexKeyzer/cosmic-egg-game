@@ -48,13 +48,14 @@
     <div id="loadingScreen">
         <div class="spinner"></div>
         <div id="loadingText">Загрузка Космоса...</div>
+        <div id="loadingVersion" style="margin-top:16px;color:#9d4edd;font-size:13px;letter-spacing:2px;font-weight:bold;"></div>
     </div>
     <canvas id="gameCanvas"></canvas>
     <div id="bannerAd"></div>
 
     <script>
     // ====================================================================================
-    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v4.7)
+    // COSMIC EGG: SPACE EMPIRE — VK EDITION (v4.6)
     // Глубокий менеджмент-тайкун: 6 бизнесов с автоматическим производством,
     // склад яиц, биржа с колеблющимися ценами, заказы планет, улучшения,
     // НАУКА и дерево из 24 технологий с таймерами исследований,
@@ -80,14 +81,13 @@
     // осталась старая версия v3.7/v3.8 с меткой тестового баннера — в v4.2
     // таких надписей нет вообще). Реклама v4.3: showRewarded запоминает награду
     // ДО проверки VK; сплэш при загрузке показывает версию сборки минимум 1.4 с
-    // (сразу видно, что открыта новая версия). Реклама v4.5: встроенный
-    // 30-секундный рекламный ролик (слайды-промо + таймер 30→0, метка
-    // «РЕКЛАМА», без пропуска) открывается ПО КЛИКУ СРАЗУ И ВСЕГДА — это
-    // единственный гарантированный путь; настоящий ролик VK пробуется поверх
-    // него, и если реально показался и досмотрен — бонус выдаётся сразу.
-    // Главный урок v4.4: VK может ответить «материалы есть», а видео так и не
-    // показать — поэтому выбор «что показывать игроку» больше не зависит от
-    // ответов VK. Никаких «недоступно» и мёртвых кнопок.
+    // (сразу видно, что открыта новая версия). Реклама v4.6: по клику на кнопку
+    // награды вызывается ТОЛЬКО официальный ролик VK — VKWebAppShowNativeAds
+    // (ad_format 'reward'), никаких встроенных заглушек, параллельных путей и
+    // запасных экранов. Отсчёт времени ролика и все элементы плеера (включая
+    // крестик закрытия) рисует сам VK — мини-приложение на них влиять не может;
+    // награда начисляется строго за полный просмотр (result:true), закрытие
+    // через крестик раньше конца — без награды.
     // Версия игры — на сплэше, вкладке «Статус» и в консоли.
     // ====================================================================================
 
@@ -126,9 +126,9 @@
     //   поэтому ни таймер цикла, ни сдача заказа, ни закрытие лотереи не могут
     //   показать её чаще лимита.
     // • Баннер — нативный sticky-баннер Рекламной сети VK внизу экрана (см. ниже).
-    // • Rewarded-реклама — перед показом открывается модалка с 30-секундным таймером:
-    //   игрок заранее видит награду и правило; награда начисляется ТОЛЬКО за полный
-    //   просмотр (result:true). Кнопки «x2 Доход», «2ч Офлайн», «Лотерея».
+    // • Rewarded-реклама — по клику СРАЗУ вызывается только официальный ролик VK
+    //   (VKWebAppShowNativeAds, ad_format 'reward'); награда начисляется ТОЛЬКО за
+    //   полный просмотр (result:true). Кнопки «x2 Доход», «2ч Офлайн», «Лотерея».
     // Внутри VK используются официальные методы: VKWebAppShowNativeAds (reward /
     // interstitial) и VKWebAppShowBannerAd (sticky-баннер внизу экрана); нужна
     // включённая монетизация: dev.vk.com → приложение → Монетизация.
@@ -144,27 +144,21 @@
     // Реклама v4.2: перед открытием модалки rewarded — свежая проверка материалов;
     // при отказе VK модалка с таймером НЕ открывается (нечего показывать — никак
     // не имитируем показ), при 1208 открывается модалка с причиной и шагами
-    // включения монетизации. v4.6: версии и даты НЕТ нигде в интерфейсе —
-    // игрок их не видит (по требованию). Какая сборка запущена, видно только
-    // в консоли браузера (строка «🌌 Cosmic Egg: Space Empire …»). Реклама
-    // v4.7: плеер рекламы НА ВЕСЬ ЭКРАН — только сам ролик (промо-слайды +
-    // метка «РЕКЛАМА» + кольцевой таймер 30→0 в правом верхнем углу, где у
-    // настоящих плееров крестик); без заголовков, наград, подсказок и кнопок,
-    // закрыть досрочно нельзя. Таймер дошёл до нуля — ролик закрывается САМ
-    // и бонус начисляется автоматически (gameLoop). Настоящий ролик VK
-    // пробуется поверх встроенного: реально показался и досмотрен
-    // (result:true) — бонус сразу; VK солгал «материалы есть» и видео не
-    // пришло — игрок досматривает встроенный ролик и получает тот же бонус.
-    // Когда монетизация включена, настоящий ролик VK показывается сам
-    // (его интерфейс — крестик, панель «Играть» — рисует VK, не игра).
-    // Реклама v4.5 (как в других играх VK): реклама ЕСТЬ ВСЕГДА и
-    // открывается СРАЗУ по клику. Репост-бонус v4.3 остался в коде как
-    // запасной экран; сплэш загрузки держится минимум 1.4 с.
-    const GAME_VERSION = 'v4.7';   // видна ТОЛЬКО в консоли браузера, не в интерфейсе
-    const BOOT_T0 = Date.now();          // сплэш держится минимум 1.4 с
+    // включения монетизации. BUILD_DATE выводится в «Статусе»: сверяйте, что
+    // на хостинге именно эта сборка (старые v3.7/v3.8 рисовали метку
+    // тестового баннера — в v4.2 её нет). Реклама v4.6: по клику вызывается
+    // ТОЛЬКО официальный ролик VK — VKWebAppShowNativeAds (reward). Встроенных
+    // заглушек (слайды-промо, свой таймер, метка «РЕКЛАМА») больше нет: отсчёт
+    // 30→0 и крестик плеера — часть самого VK, мини-приложение их не меняет.
+    // Награда — строго за полный просмотр (result:true); при отказе VK
+    // (монетизация не включена, нет материалов) — честный тост, никакой
+    // имитации показа. Сплэш загрузки показывает версию сборки минимум 1.4 с.
+    const GAME_VERSION = 'v4.6';
+    const BUILD_DATE = '10.11.2026';
+    const BOOT_T0 = Date.now();          // v4.3: сплэш версии виден минимум 1.4 с
     const ADS_ENABLED = true;
     const INTERSTITIAL_INTERVAL = 180;   // секунд между полноэкранными рекламами (3 мин)
-    const REWARD_AD_SECS = 30;           // длительность rewarded-ролика (таймер модалки)
+    const REWARD_AD_SECS = 30;           // длительность rewarded-ролика VK (отсчёт рисует плеер VK)
     const STICKY_BANNER_H = 56;          // высота нативного sticky-баннера VK (резерв места)
     const ADS_DEBUG = true;
 
@@ -223,6 +217,7 @@
             missionDone: "🎯 Цель выполнена: ",
             missionAllDone: "🏁 Все цели империи выполнены!",
             statsTechs: "Изучено технологий", statsMissions: "Выполнено целей", statsPlanets: "Открыто колоний",
+            gameVersion: "Версия игры",
             buy: "Купить", lvl: "шт", max: "Макс",
             perCycle: "за цикл", msAt: "x2 через",
             eggLbl: "🥚", crysLbl: "💎",
@@ -243,21 +238,7 @@
             adLoading: "Реклама ещё загружается — попробуйте через минуту",
             adUnavailable: "Реклама сейчас недоступна — попробуйте позже",
             adBlockedToast: "Реклама недоступна: включите монетизацию в dev.vk.com",
-            adBlockedTitle: "Реклама недоступна",
-            adBlockedOk: "Понятно",
-            adBlockedSteps: ["1. Откройте dev.vk.com → приложение", "2. Настройки → Монетизация → включить", "3. Кабинет выплат: cashout.vk.com", "До модерации — тестовая реклама VK"],
-            adShareBtn: "📣 Бонус за репост",
-            adShareNote: "Пока VK отказал в рекламе: тот же бонус — за репост об игре",
-            adShareDone: "Бонус начислен — спасибо за репост!",
-            adShareFail: "Репост не состоялся — бонуса пока нет",
-            adBuiltinBadge: "РЕКЛАМА",
-            adBuiltinDone: "Бонус за просмотр получен!",
-            adSlide1Title: "Космическое Яйцо",
-            adSlide1Text: "Строй космическую империю",
-            adSlide2Title: "3 колоннии · 36 целей",
-            adSlide2Text: "Менеджеры зарабатывают сами",
-            adSlide3Title: "Лотерея · Заказы планет · Престиж",
-            adSlide3Text: "Спасибо за просмотр!",
+            adRewardDone: "Бонус за просмотр получен!",
             statsTotal: "Всего кристаллов", statsRun: "Заработано за забег", statsEggs: "Произведено яиц",
             statsSold: "Продано яиц", statsContracts: "Выполнено заказов", statsEvents: "Событий поймано",
             statsMgrs: "Менеджеров в команде", statsTime: "Время в игре", statsPrestiges: "Больших взрывов",
@@ -295,6 +276,7 @@
             missionDone: "🎯 Goal complete: ",
             missionAllDone: "🏁 All empire goals complete!",
             statsTechs: "Technologies researched", statsMissions: "Goals completed", statsPlanets: "Colonies unlocked",
+            gameVersion: "Game version",
             buy: "Buy", lvl: "pcs", max: "Max",
             perCycle: "per cycle", msAt: "x2 in",
             eggLbl: "🥚", crysLbl: "💎",
@@ -315,21 +297,7 @@
             adLoading: "The ad is still loading — try again in a minute",
             adUnavailable: "Ads are unavailable right now — try again later",
             adBlockedToast: "Ads unavailable: enable monetization at dev.vk.com",
-            adBlockedTitle: "Ads unavailable",
-            adBlockedOk: "Got it",
-            adBlockedSteps: ["1. Open dev.vk.com → your app", "2. Settings → Monetization → enable", "3. Payouts account: cashout.vk.com", "Test ads until the app is moderated"],
-            adShareBtn: "📣 Share for the bonus",
-            adShareNote: "While VK refuses ads: the same bonus for sharing the game",
-            adShareDone: "Bonus granted — thanks for sharing!",
-            adShareFail: "The share didn't happen — no bonus yet",
-            adBuiltinBadge: "AD",
-            adBuiltinDone: "Bonus for watching granted!",
-            adSlide1Title: "Cosmic Egg",
-            adSlide1Text: "Build your cosmic empire",
-            adSlide2Title: "3 colonies · 36 goals",
-            adSlide2Text: "Managers earn while you idle",
-            adSlide3Title: "Roulette · Planet orders · Prestige",
-            adSlide3Text: "Thanks for watching!",
+            adRewardDone: "Bonus for watching granted!",
             statsTotal: "Total crystals", statsRun: "Earned this run", statsEggs: "Eggs produced",
             statsSold: "Eggs sold", statsContracts: "Orders completed", statsEvents: "Events caught",
             statsMgrs: "Managers on the team", statsTime: "Play time", statsPrestiges: "Big Bangs",
@@ -460,8 +428,10 @@
         }
 
         // Этап 3: Гарантированный запуск игры (вне зависимости от ошибок выше)
-        // v4.7: сплэш без версии/даты (надписи о версии в интерфейсе нет),
-        // держится минимум 1.4 с — видно даже при мгновенной загрузке
+        // v4.3: сплэш показывает версию сборки (сверка «на хостинге новая версия»)
+        // и держится минимум 1.4 с — видно даже при мгновенной загрузке
+        let lvEl = document.getElementById('loadingVersion');
+        if (lvEl) lvEl.textContent = '🌌 ' + GAME_VERSION + ' · ' + BUILD_DATE;
         game.state = 'playing';
         game.lastTick = Date.now();
         let splashLeft = 1400 - (Date.now() - BOOT_T0);
@@ -2258,6 +2228,9 @@
 
     function drawStatTab(px, py, pw, ph) {
         let lines = [
+            '🌌 ' + t.gameVersion + ': ' + GAME_VERSION +
+            (typeof BUILD_DATE !== 'undefined'
+                ? (lang === 'ru' ? ' · сборка ' : ' · build ') + BUILD_DATE : ''),
             t.statsTotal + ": " + formatNum(game.totalCrystals) + ' 💎',
             t.statsRun + ": " + formatNum(game.runCrystals) + ' 💎',
             t.statsEggs + ": " + formatNum(Math.floor(game.eggsProduced)) + ' 🥚',
@@ -2474,128 +2447,6 @@
             ctx.fillStyle = "#FFF"; ctx.font = "bold 15px sans-serif";
             ctx.fillText(t.prestigeCancel, mX + mW / 2 + gap / 2 + btnW / 2, startY + 30);
             uiButton('prestige_cancel', mX + mW / 2 + gap / 2, startY, btnW, btnH);
-        } else if (game.modal === 'ad_reward') {
-            // v4.7: РЕКЛАМНЫЙ ПЛЕЕР НА ВЕСЬ ЭКРАН — только сам ролик, ничего
-            // лишнего. Фон НЕпрозрачный (игра за ним не видна), без заголовка,
-            // строки награды, подсказок и кнопок; закрыть досрочно нельзя —
-            // крестика и «Позже» больше нет. Вместо крестика — кольцевой
-            // таймер 30 → 0 в правом верхнем углу (где он у настоящих
-            // плееров). Таймер дошёл до нуля — ролик закрывается САМ, и бонус
-            // начисляется автоматически (проверка в gameLoop). Настоящий
-            // ролик VK (режим 'vk' — страховка, с v4.5 не устанавливается)
-            // рисует сам VK поверх нашего плеера.
-            ctx.textAlign = "center";
-            let aBg = ctx.createLinearGradient(0, 0, 0, H);
-            aBg.addColorStop(0, "#0d0a1f"); aBg.addColorStop(1, "#05060f");
-            ctx.fillStyle = aBg;
-            ctx.fillRect(0, 0, W, H);
-
-            let builtin = game.adMode === 'builtin';
-            let left = Math.max(0, REWARD_AD_SECS - (Date.now() - game.adRewardOpenAt) / 1000);
-
-            // кольцо таймера ВМЕСТО крестика — правый верхний угол экрана
-            let cX = W - 58, cY = 58, r = 34, frac = left / REWARD_AD_SECS;
-            ctx.lineWidth = 6;
-            ctx.strokeStyle = "rgba(255,255,255,0.14)";
-            ctx.beginPath(); ctx.arc(cX, cY, r, 0, Math.PI * 2); ctx.stroke();
-            ctx.strokeStyle = left > 0 ? "#9d4edd" : "#00FF99";
-            ctx.beginPath(); ctx.arc(cX, cY, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - frac)); ctx.stroke();
-            ctx.fillStyle = "#FFF"; ctx.font = "bold 22px sans-serif";
-            ctx.fillText(Math.ceil(left), cX, cY + 8);
-
-            if (builtin) {
-                // «Экран ролика» — крупный, по центру: слайды-промо, метка РЕКЛАМА
-                let aX = mX, aW = mW;
-                let aH = Math.max(200, Math.min(H * 0.42, 320));
-                let aY = H / 2 - aH / 2;
-                let aGrad = ctx.createLinearGradient(aX, aY, aX, aY + aH);
-                aGrad.addColorStop(0, "#241539"); aGrad.addColorStop(1, "#120a20");
-                ctx.fillStyle = aGrad;
-                rect(aX, aY, aW, aH, 16, true, false);
-                ctx.strokeStyle = "rgba(157,78,221,0.45)"; ctx.lineWidth = 1;
-                rect(aX, aY, aW, aH, 16, false, true);
-
-                let si = Math.min(2, Math.floor((REWARD_AD_SECS - left) / 10)); // 3 слайда по 10 с
-                if (si === 0) {
-                    let eX = aX + aW * 0.24, eY = aY + aH / 2;
-                    let eGrad = ctx.createRadialGradient(eX - 8, eY - 12, 4, eX, eY, 44);
-                    eGrad.addColorStop(0, "#8ecae6"); eGrad.addColorStop(0.55, "#7b2ff7"); eGrad.addColorStop(1, "#2d0a5e");
-                    ctx.fillStyle = eGrad;
-                    ctx.beginPath(); ctx.ellipse(eX, eY, 32, 42, 0, 0, Math.PI * 2); ctx.fill();
-                    let tX = aX + aW * 0.58;
-                    ctx.fillStyle = "#FFD700"; ctx.font = "bold 24px sans-serif";
-                    ctx.fillText(t.adSlide1Title, tX, eY - 8);
-                    ctx.fillStyle = "#cfe9ff"; ctx.font = "15px sans-serif";
-                    ctx.fillText(t.adSlide1Text, tX, eY + 22);
-                } else if (si === 1) {
-                    ctx.fillStyle = "#FFD700"; ctx.font = "bold 20px sans-serif";
-                    ctx.fillText(t.adSlide2Title, aX + aW / 2, aY + aH / 2 - 12);
-                    ctx.fillStyle = "#cfe9ff"; ctx.font = "15px sans-serif";
-                    ctx.fillText(t.adSlide2Text, aX + aW / 2, aY + aH / 2 + 20);
-                } else {
-                    ctx.fillStyle = "#FFD700"; ctx.font = "bold 20px sans-serif";
-                    ctx.fillText(t.adSlide3Title, aX + aW / 2, aY + aH / 2 - 12);
-                    ctx.fillStyle = "#00FF99"; ctx.font = "15px sans-serif";
-                    ctx.fillText(t.adSlide3Text, aX + aW / 2, aY + aH / 2 + 20);
-                }
-                // метка «РЕКЛАМА» в углу экрана ролика (как у настоящей рекламы)
-                ctx.fillStyle = "rgba(0,0,0,0.55)";
-                rect(aX + 10, aY + 10, 78, 20, 6, true, false);
-                ctx.fillStyle = "#cfe9ff"; ctx.font = "bold 10px sans-serif";
-                ctx.fillText(t.adBuiltinBadge, aX + 49, aY + 24);
-                // точки-страницы слайдов
-                for (let d = 0; d < 3; d++) {
-                    ctx.fillStyle = d === si ? "#9d4edd" : "rgba(255,255,255,0.25)";
-                    ctx.beginPath();
-                    ctx.arc(aX + aW / 2 + (d - 1) * 14, aY + aH + 22, 3.5, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            } else {
-                // Страховочный режим (не используется с v4.5): настоящий плеер
-                // VK рисуется поверх; под ним — только таймер на тёмном фоне
-                ctx.fillStyle = "#cfe9ff"; ctx.font = "bold 30px sans-serif";
-                ctx.fillText("📺", W / 2, H / 2);
-            }
-            // Больше ничего: ни заголовка, ни награды, ни подсказок, ни кнопок.
-        } else if (game.modal === 'ad_blocked') {
-            // v4.2: модалка причины отказа VK. ВАЖНО (v4.5): в обычной игре НЕ
-            // открывается — вместо отказа всегда играет встроенный 30-секундный
-            // ролик (режим builtin). Остаётся как аварийный экран диагностики
-            // и запасной путь «Бонус за репост» (v4.3).
-            let mH = Math.min(430, Math.max(360, H * 0.48)), mY = H / 2 - mH / 2;
-            glassPanel(mX, mY, mW, mH, 20, 0.12);
-
-            ctx.fillStyle = "#FF6B6B"; ctx.textAlign = "center"; ctx.font = "bold 20px sans-serif";
-            ctx.fillText("📺 " + t.adBlockedTitle, W / 2, mY + 40);
-
-            let r = String(adPreload.lastReason || bannerDiag.lastReason || '');
-            if (r.length > 34) r = r.slice(0, 34) + '…';
-            ctx.fillStyle = "#ffb4b4"; ctx.font = "13px sans-serif";
-            ctx.fillText((lang === 'ru' ? 'VK: отказ ' : 'VK: refused ') +
-                '[' + (adPreload.lastCode || bannerDiag.lastCode || '—') + '] ' + r, W / 2, mY + 68);
-
-            ctx.fillStyle = "#cfe9ff"; ctx.font = "13px sans-serif";
-            t.adBlockedSteps.forEach((line, i) => ctx.fillText(line, W / 2, mY + 104 + i * 25));
-
-            ctx.fillStyle = "#00FF99"; ctx.font = "bold 13px sans-serif";
-            ctx.fillText(t.adShareNote, W / 2, mY + mH - 122);
-
-            let bH = 46, bY = mY + mH - 98;
-            let shW = mW * 0.5, okW = mW * 0.34, gap = 14;
-            let rowW = shW + gap + okW;
-            let shX = mX + (mW - rowW) / 2, okX = shX + shW + gap;
-            let grad = ctx.createLinearGradient(shX, bY, shX + shW, bY + bH);
-            grad.addColorStop(0, "#00b894"); grad.addColorStop(1, "#008f6b");
-            ctx.fillStyle = grad; rect(shX, bY, shW, bH, 12, true, false);
-            ctx.fillStyle = "#03130d"; ctx.font = "bold 14px sans-serif";
-            ctx.fillText(t.adShareBtn, shX + shW / 2, bY + 29);
-            uiButton('ad_share', shX, bY, shW, bH);
-
-            ctx.fillStyle = "#444";
-            rect(okX, bY, okW, bH, 12, true, false);
-            ctx.fillStyle = "#FFF"; ctx.font = "bold 15px sans-serif";
-            ctx.fillText(t.adBlockedOk, okX + okW / 2, bY + 29);
-            uiButton('ad_blocked_ok', okX, bY, okW, bH);
         }
     }
 
@@ -2620,9 +2471,7 @@
     // ====================================================================================
     // 9. ВВОД
     // ====================================================================================
-    // v4.7: 'ad_watch'/'ad_cancel' удалены — у рекламного плеера НЕТ кнопок
-    // (закрыть досрочно нельзя, бонус выдаётся сам по таймеру 30 с)
-    const MODAL_IDS = ['close_modal', 'spin_again', 'spin_roulette', 'prestige_confirm', 'prestige_cancel', 'ad_share', 'ad_blocked_ok'];
+    const MODAL_IDS = ['close_modal', 'spin_again', 'spin_roulette', 'prestige_confirm', 'prestige_cancel'];
 
     function handleInput(e) {
         e.preventDefault(); initAudio();
@@ -2724,10 +2573,6 @@
         if (id === 'spin_again') { showRewarded('roulette'); return; }
         if (id === 'ad_boost') { showRewarded('boost'); return; }
         if (id === 'ad_offline') { showRewarded('offline'); return; }
-        // v4.7: 'ad_watch'/'ad_cancel' удалены — плеер без кнопок: 30 секунд
-        // ролика нельзя пропустить, бонус начисляется автоматически (gameLoop)
-        if (id === 'ad_blocked_ok') { game.modal = null; return; } // v4.2: закрыть «Реклама недоступна»
-        if (id === 'ad_share') { shareForReward(); return; } // v4.3: репост — запасной путь (аварийный экран ad_blocked)
         if (id === 'ad_roulette') { game.modal = 'roulette'; return; }
         if (id === 'event_comet') { hitComet(); return; }
         if (id === 'event_ufo') { hitUfo(); return; }
@@ -2958,84 +2803,57 @@
         });
     }
 
-    // Rewarded-реклама (v3.3). v4.7: плеер рекламы на весь экран — ТОЛЬКО сам
-    // ролик: слайды-промо, метка «РЕКЛАМА» и кольцевой таймер 30→0 вместо
-    // крестика (закрыть досрочно нельзя). Таймер дошёл до нуля — ролик
-    // закрывается сам, награда начисляется АВТОМАТИЧЕСКИ (gameLoop →
-    // watchRewardedAd, builtin-путь мгновенный и синхронный).
-    // v4.2: перед открытием модалки rewarded — свежая проверка материалов VK.
-    // v4.5 — ГЛАВНЫЙ УРОК v4.4: VK может ответить «материалы есть»
-    // (VKWebAppCheckNativeAds → true), а видео по VKWebAppShowNativeAds так и
-    // не показать (тихое зависание без вызова колбэков). Поэтому в v4.4 игрок
-    // видел модалку «Реклама за вознаграждение» с таймером, потом модалка
-    // закрывалась, игра вставала на паузу — и НИЧЕГО не происходило.
-    // v4.5: игрок больше не зависит от ответов VK вообще.
-    //   1. Клик → встроенный 30-секундный ролик открывается МГНОВЕННО И ВСЕГДА
-    //      (adMode 'builtin'): слайды-промо, метка «РЕКЛАМА», таймер 30→0.
-    //   2. Параллельно (vkTryRealReward) пробуется НАСТОЯЩИЙ ролик VK:
-    //      реально показался и досмотрен (result:true) — бонус сразу, встроенный
-    //      ролик закрывается; закрыт раньше (result:false) — встроенный ролик
-    //      продолжается; ошибка или тишина — VK-путь помечается мёртвым
-    //      (game.adVkDead) и не тратится до перезапуска сессии.
-    //   3. Встроенный ролик досмотрен — бонус гарантирован независимо от VK.
-    // Модалка 'ad_blocked' (причина + «Бонус за репост») остаётся в коде как
-    // аварийный экран, в обычном потоке не открывается.
 
+    // Rewarded-реклама (v4.6): по клику на кнопку награды вызывается ТОЛЬКО
+    // официальный ролик VK — VKWebAppShowNativeAds (ad_format 'reward').
+    // Ничего лишнего: встроенных заглушек-роликов, параллельных попыток и
+    // запасных экранов больше нет. Отсчёт времени 30→0, метка «Реклама» и
+    // крестик закрытия — часть родного плеера VK, мини-приложение их не меняет.
+    // Награда начисляется строго за полный просмотр: VK возвращает result:true
+    // только за досмотренный до конца ролик; закрытие через крестик раньше
+    // конца (result:false) или отказ VK — без награды, с честным тостом.
     async function showRewarded(type) {
-        // v4.5: ни одного ожидания VK до открытия модалки — кнопка не может «зависнуть»
         game.adRewardType = type;
-        game.adRewardGranted = false; // защита от двойной выдачи (VK + builtin)
-        game.adMode = 'builtin';
-        game.adRewardOpenAt = Date.now();
-        game.modal = 'ad_reward';
-        vkTryRealReward(type); // фоновая попытка настоящего ролика VK
-    }
-
-    // v4.5: попытка показать НАСТОЯЩИЙ ролик VK поверх встроенного. Не блокирует
-    // игрока: встроенный ролик уже играет, любой исход VK — не помеха.
-    //   result:true  → бонус сразу (game.adRewardGranted), модалка закрывается;
-    //   result:false → настоящий ролик закрыт раньше — тост, встроенный играет;
-    //   ошибка       → game.adVkDead = true (до перезапуска сессии не тратим);
-    //   тишина 90 с  → считаем зависанием VK (видео не придёт), помечаем мёртвым.
-    async function vkTryRealReward(type) {
-        if (!vk || !adsUI || game.adVkDead) return;
-        try {
-            if (adPreload.reward !== true) {
-                adPreload.lastCode = ''; // оцениваем отказ именно этой проверки
-                await vkCheckAds('reward');
-                if (adPreload.reward !== true) {
-                    // явный отказ VK (есть код ошибки) — путь мёртв до перезапуска
-                    // сессии; «пока не готовы» без ошибки — попробуем при след. клике
-                    if (adPreload.lastCode) game.adVkDead = true;
-                    return;
+        if (vk && adsUI) {
+            game.state = 'paused';
+            let rewarded = false, errToast = null;
+            try {
+                // официальная рекомендация VK: перед показом убедиться, что материалы загружены
+                if (adPreload.reward !== true) await vkCheckAds('reward');
+                if (adPreload.reward === false) {
+                    errToast = t.adUnavailable; // показывать нечего — никакой имитации показа
+                } else {
+                    // страховка от тихого зависания VK: 90 с без ответа — показ не состоялся
+                    let res = await Promise.race([
+                        vk.send('VKWebAppShowNativeAds', { ad_format: 'reward' }),
+                        new Promise(r => setTimeout(() => r('timeout'), 90000))
+                    ]);
+                    if (res === 'timeout') errToast = t.adUnavailable;
+                    else rewarded = (res === true) || !!(res && res.result === true);
                 }
+            } catch (e) {
+                let er = adErrText(e);
+                adPreload.lastCode = er.code;
+                adPreload.lastReason = er.reason;
+                adPreload.lastAt = adNowTime();
+                console.log("Rewarded error: [" + er.code + "] " + er.reason);
+                errToast = (er.code === '1208') ? t.adBlockedToast : t.adUnavailable;
             }
-            let res = await Promise.race([
-                vk.send('VKWebAppShowNativeAds', { ad_format: 'reward' }),
-                new Promise(r => setTimeout(() => r('timeout'), 90000))
-            ]);
-            if (res === 'timeout') { game.adVkDead = true; return; }
-            game.adVkProven = true; // видео реально показывалось
-            if ((res === true) || !!(res && res.result === true)) {
-                if (!game.adRewardGranted) {
-                    game.adRewardGranted = true;
-                    game.modal = null;
-                    game.lastTick = Date.now();
-                    grantReward(type);
-                    pushToast('🎁 ' + t.adBuiltinDone);
-                }
-            } else {
-                pushToast('📺 ' + t.adEarlyClose);
-            }
-        } catch (e) {
-            let er = adErrText(e);
-            adPreload.lastCode = er.code;
-            adPreload.lastReason = er.reason;
-            adPreload.lastAt = adNowTime();
-            console.log("Rewarded error: [" + er.code + "] " + er.reason);
-            game.adVkDead = true; // VK отклонил показ (в т.ч. 1208) — не тратим попытки
+            game.state = 'playing';
+            game.lastTick = Date.now();
+            if (rewarded) { grantReward(type); pushToast('🎁 ' + t.adRewardDone); }
+            else if (errToast) pushToast('📺 ' + errToast);
+            else pushToast('📺 ' + t.adEarlyClose);
+        } else if (ADS_DEBUG && !inVK) {
+            // вне VK (локальная проверка кнопки) — демо-заглушка вместо ролика
+            game.state = 'paused';
+            await showDemoOverlay("РЕКЛАМА (reward)", 2.2);
+            game.state = 'playing';
+            game.lastTick = Date.now();
+            grantReward(type);
         }
     }
+
 
     function grantReward(type) {
         if (type === 'boost') game.boosts.adBoost = 120;
@@ -3051,95 +2869,7 @@
         }
     }
 
-    // v4.3: резервная награда за репост об игре (VKWebAppShowWallPostBox —
-    // официальный метод, работает БЕЗ монетизации). С v4.4 в обычном потоке
-    // не вызывается: вместо репоста игрок смотрит встроенный 30-секундный
-    // ролик; функция и кнопка в ad_blocked остаются как запасной путь.
-    async function shareForReward() {
-        let type = game.adRewardType;
-        game.modal = null;
-        game.state = 'paused';
-        let shared = true;
-        if (vk && vk.send) {
-            try {
-                let res = await vk.send('VKWebAppShowWallPostBox', {
-                    message: '🌌 Космическое Яйцо: Космический Тайкун — строю космическую империю! Присоединяйся: ' + location.href
-                });
-                if (res && res.result === false) shared = false; // игрок отменил репост
-            } catch (e) {
-                console.log("[Share] репост отменён или не удался:", e);
-                shared = false;
-            }
-        }
-        game.state = 'playing';
-        game.lastTick = Date.now();
-        if (!shared) { pushToast('📣 ' + t.adShareFail); return; }
-        grantReward(type);
-        pushToast('📣 ' + t.adShareDone);
-    }
 
-    async function watchRewardedAd() {
-        if (Date.now() - game.adRewardOpenAt < REWARD_AD_SECS * 1000) return; // таймер не истёк
-        let type = game.adRewardType;
-        // v4.5: встроенный ролик досмотрен (30 с) — бонус сразу, без VK.
-        // adRewardGranted защищает от двойной выдачи, если поверх встроенного
-        // ролика VK успел показать настоящий и уже выдал бонус (result:true).
-        if (game.adMode === 'builtin') {
-            if (game.adRewardGranted) { game.modal = null; game.lastTick = Date.now(); return; }
-            game.adRewardGranted = true;
-            game.modal = null;
-            game.lastTick = Date.now();
-            grantReward(type);
-            pushToast('🎁 ' + t.adBuiltinDone);
-            return;
-        }
-        // Защитная ветка: adMode 'vk' с v4.5 не устанавливается (встроенный ролик
-        // открывается всегда), ветка остаётся на случай внешних изменений режима.
-        game.modal = null;
-        let rewarded = false;
-        game.state = 'paused';
-        if (vk && adsUI) {
-            try {
-                // v4.1: по документации VK перед показом — VKWebAppCheckNativeAds,
-                // иначе Show может быть нечего показывать (нажатие «ни к чему не приведёт»)
-                if (adPreload.reward !== true) await vkCheckAds('reward');
-                if (adPreload.reward === false) {
-                    // материалы пропали, пока висела модалка, — включаем
-                    // встроенный ролик, игрок всё равно посмотрит рекламу
-                    game.adMode = 'builtin';
-                    game.adRewardOpenAt = Date.now();
-                    game.modal = 'ad_reward';
-                    game.state = 'playing';
-                    game.lastTick = Date.now();
-                    return;
-                }
-                // Награда только за полный просмотр: VK Bridge возвращает result:true,
-                // если ролик досмотрен; крестик плеера / ранний выход → false или ошибка.
-                let res = await vk.send('VKWebAppShowNativeAds', { ad_format: 'reward' });
-                rewarded = (res === true) || !!(res && res.result === true);
-            } catch (e) {
-                let er = adErrText(e);
-                adPreload.lastCode = er.code;
-                adPreload.lastReason = er.reason;
-                adPreload.lastAt = adNowTime();
-                console.log("Rewarded error: [" + er.code + "] " + er.reason);
-                // VK отклонил показ (в т.ч. 1208 «monetization disabled») —
-                // вместо отказа включаем встроенный 30-секундный ролик
-                game.adMode = 'builtin';
-                game.adRewardOpenAt = Date.now();
-                game.modal = 'ad_reward';
-                game.state = 'playing';
-                game.lastTick = Date.now();
-                return;
-            }
-        } else {
-            rewarded = true; // страховка от мёртвых кнопок: реклама вне VK не подключена
-        }
-        game.state = 'playing';
-        game.lastTick = Date.now();
-        if (rewarded) { game.adRewardGranted = true; grantReward(type); }
-        else pushToast('📺 ' + t.adEarlyClose);
-    }
 
     function spinRoulette() {
         if (game.rouletteSpinning) return;
@@ -3474,22 +3204,9 @@
         let now = Date.now();
         let dt = (now - game.lastTick) / 1000;
         game.lastTick = now;
-        // v4.7: у рекламного плеера нет крестика и кнопок закрытия — как только
-        // 30-секундный таймер дошёл до нуля, ролик закрывается САМ и бонус
-        // начисляется автоматически. Проверка ВНЕ проверки state — работает
-        // даже если игра на паузе; повторный вызов не даёт двойной награды
-        // (adRewardGranted + modal=null).
-        if (game.modal === 'ad_reward' && game.adMode === 'builtin' &&
-            now - game.adRewardOpenAt >= REWARD_AD_SECS * 1000) watchRewardedAd();
         if (game.state === 'playing') {
-            try {
-                update(Math.min(dt, 0.1));
-                draw();
-            } catch (e) {
-                // v4.7: страховка — ошибка рендера не должна останавливать
-                // игровой цикл (иначе экран замирает вместе с рекламой)
-                console.error("[Loop]", e);
-            }
+            update(Math.min(dt, 0.1));
+            draw();
         }
         requestAnimationFrame(gameLoop);
     }
@@ -3505,115 +3222,9 @@
     window.__tycoon = { game: game, sellAll: sellAll, recalcStats: recalcStats, buyBusiness: buyBusiness,
         research: research, buyReactor: buyReactor, unlockColony: unlockColony, finishResearch: finishResearch,
         hireManager: hireManager, tapCore: tapCore,
-        showInterstitial: showInterstitial, showRewarded: showRewarded, watchRewardedAd: watchRewardedAd,
+        showInterstitial: showInterstitial, showRewarded: showRewarded,
         showBannerAd: showBannerAd, bannerSafeOffset: bannerSafeOffset, bannerNetwork: bannerNetwork };
     window.__adsCfg = { interval: INTERSTITIAL_INTERVAL, rewardSecs: REWARD_AD_SECS, stickyH: STICKY_BANNER_H };
     </script>
-    <!-- ====== CE VK-ADS FIX: вставить ПЕРЕД </body> ====== -->
-<script>
-(function () {
-  'use strict';
-  if (window.CE_ADS) return;
-  var bypass = false;
-
-  function bridge() {
-    if (window.vkBridge && window.vkBridge.send) return window.vkBridge;
-    if (window.bridge && window.bridge.send) return window.bridge;
-    return null;
-  }
-
-  /* ЕДИНСТВЕННАЯ точка запуска рекламы — только официальная реклама ВК */
-  function showRewardAd(onReward, onFail) {
-    var br = bridge(), done = false;
-    var ok  = function () { if (!done) { done = true; onReward && onReward(); } };
-    var bad = function () { if (!done) { done = true; onFail  && onFail();  } };
-    if (!br) { bad(); return; } /* вне ВК: ничего не показываем */
-    try {
-      br.send('VKWebAppShowNativeAds', { ad_format: 'reward' })
-        .then(function (r) { (r && r.result === true) ? ok() : bad(); })
-        .catch(function () {
-          br.send('VKWebAppShowRewardedVideoBox', {})
-            .then(function (r) { (r && (r.result === true || r.success)) ? ok() : bad(); })
-            .catch(bad);
-        });
-    } catch (e) { bad(); }
-  }
-
-  /* Вместо крестика — таймер 30 секунд (только внутри рекламных слоёв) */
-  var ADSEL = '[id*="banner"],[class*="banner"],[id*="ad"],[class*="ad-"],[class*="-ad"],[id*="reward"],[class*="reward"],[id*="overlay"],[class*="overlay"]';
-  function timerize(root) {
-    if (!root || !root.querySelectorAll) return;
-    var boxes = (root.matches && root.matches(ADSEL)) ? [root] : [].slice.call(root.querySelectorAll(ADSEL));
-    boxes.forEach(function (box) {
-      [].slice.call(box.querySelectorAll('button,div,span,b,i')).forEach(function (el) {
-        if (el.dataset.ceTimer === '1') return;
-        var cls = el.id + ' ' + (el.className || '');
-        var isX = el.textContent.trim() === '✕' || el.textContent.trim() === '×' || el.textContent.trim() === 'X'
-               || /(^|\s|[-_])(close|cross|крест|закр)/i.test(cls);
-        if (!isX) return;
-        el.dataset.ceTimer = '1';
-        var left = 30;
-        el.textContent = left;
-        el.style.pointerEvents = 'none';
-        el.style.cursor = 'default';
-        el.onclick = null;
-        var iv = setInterval(function () {
-          left--;
-          if (left <= 0) { clearInterval(iv); el.style.display = 'none'; }
-          else el.textContent = left;
-        }, 1000);
-      });
-    });
-  }
-
-  /* Уборка: "тестовый баннер", метки РЕКЛАМА, версия игры, дата */
-  var BAD = /(тестов|реклама\s*[·•\-–—]|\bv\s?3\.\d+|версия|20\d{2}[-.\/]\d{2}[-.\/]\d{2}|\d{2}[.\/]\d{2}[.\/]20\d{2})/i;
-  function sweep() {
-    if (!document.body) return;
-    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false), hits = [];
-    while (w.nextNode()) { var n = w.currentNode; if (n.nodeValue && BAD.test(n.nodeValue)) hits.push(n); }
-    hits.forEach(function (n) {
-      var el = n.parentElement; if (!el || el.dataset.ceHide === '1') return;
-      var box = el;
-      for (var i = 0; i < 3 && box.parentElement; i++) {
-        if (/(banner|ver|date|footer|label|tag|hud)/i.test((box.id || '') + ' ' + (box.className || ''))) break;
-        box = box.parentElement;
-      }
-      box.dataset.ceHide = '1';
-      box.style.setProperty('display', 'none', 'important');
-    });
-  }
-
-  /* Кнопка награды: сначала ТОЛЬКО реклама ВК, ничего лишнего не открывается */
-  var RE = /(реклам|reward|за\s+просмотр)/i, EX = /(дневн|ежедневн)/i;
-  document.addEventListener('click', function (e) {
-    if (bypass) return;
-    var el = e.target && e.target.closest ? e.target.closest('button,.btn,[class*="btn"],[class*="button"],[onclick],a') : null;
-    if (!el) return;
-    var t = (el.textContent || '').trim();
-    if (!RE.test(t) || EX.test(t)) return;
-    e.preventDefault(); e.stopPropagation();
-    showRewardAd(function () {
-      bypass = true;                 /* после досмотра — награда логикой игры */
-      try { el.click(); } catch (err) {}
-      bypass = false;
-      timerize(document.body); sweep();
-    }, function () { /* реклама не вызвалась — ничего не показываем */ });
-  }, true);
-
-  function boot() {
-    sweep(); timerize(document.body);
-    new MutationObserver(function () { sweep(); timerize(document.body); })
-      .observe(document.body, { childList: true, subtree: true });
-    setInterval(sweep, 2000);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-
-  window.CE_ADS = { reward: showRewardAd };
-})();
-</script>
-<!-- ====== /CE VK-ADS FIX ====== -->
 </body>
 </html>
-
